@@ -10,5 +10,14 @@ services:
     environment:
       - RAMALAMA_STORE=/root/.local/share/ramalama
 
+  backend:
+    build:
+      context: ./backend 
+      dockerfile: Containerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ramalama
+
 volumes:
   ramalama_models:
