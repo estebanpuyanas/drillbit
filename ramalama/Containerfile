@@ -1,0 +1,10 @@
+FROM quay.io/ramalama/ramalama:latest
+
+# Bake the model into the image at build time so the container
+# is fully self-contained — no runtime downloads required.
+RUN ramalama pull ollama://llama3.2:3b
+
+# ramalama serve exposes an OpenAI-compatible HTTP API on 8080
+EXPOSE 8080
+
+ENTRYPOINT ["ramalama", "serve", "--port", "8080", "ollama://llama3.2:3b"]

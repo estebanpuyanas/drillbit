@@ -1,0 +1,5 @@
+ramalama:
+  build: ./ramalama 
+  ports:
+    - "8080:8080"
+  commands: ramalama serve ollama://llama3.2:3b --port 8080
