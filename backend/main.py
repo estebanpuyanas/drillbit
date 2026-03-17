@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from openai import OpenAI
+from chroma import client, collection
 
 app = FastAPI()
 llm = OpenAI(base_url="http://ramalama:8080/v1", api_key="unused")

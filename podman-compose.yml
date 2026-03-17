@@ -17,6 +17,8 @@ services:
       dockerfile: Containerfile
     ports:
       - "8000:8000"
+    volumes:
+      - chroma_data:/app/chroma_data
     depends_on:
       - ramalama
 
@@ -34,3 +36,4 @@ services:
 
 volumes:
   ramalama_models:
+  chroma_data:

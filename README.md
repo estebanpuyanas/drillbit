@@ -50,7 +50,7 @@ User query (natural language)
 | `backend` | 8000 | FastAPI — embeddings, ChromaDB, ranking |
 | `mcp-server` | 8001 | FastMCP — live package metadata tools |
 
-The **TUI runs on the host**, not in a container — it needs direct terminal access and host-level `dnf` permissions. 
+The **TUI runs on the host**, not in a container since it needs direct terminal access and host-level `dnf` permissions. **For the purposes of the Hackathon we will not be installing Fedora, since Mac/Windows would run it in a VM and any Linux user would need to do dual boot or separate partition. The tool will simply implement the AI-MCP workflow and print out the final ranked list of packages, without actually running the install command.**
 
 ---
 
@@ -60,6 +60,7 @@ The **TUI runs on the host**, not in a container — it needs direct terminal ac
 - **Podman** + **podman-compose**
 - **Git**
 
+> [!NOTE]
 > **Mac users**: Install [Podman Desktop](https://podman-desktop.io/) — it handles the Podman Machine (Linux VM) setup for you. Do this before the day of the event, first-time init takes a few minutes.
 >
 > **Windows users**: Install Podman in WSL2 or use Podman Desktop for Windows.
@@ -248,6 +249,7 @@ podman-compose up -d
 
 Model data is stored in a named volume (`ramalama_models`) and persists between restarts. Subsequent starts are fast.
 
+> [!WARNING]
 > **Critical**: never run `podman-compose down -v` — the `-v` flag deletes volumes including your downloaded model. Use `podman-compose down` (without `-v`) to stop services.
 
 ### Subsequent runs
