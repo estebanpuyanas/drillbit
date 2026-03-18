@@ -323,6 +323,15 @@ podman rm -f $(podman ps -aq)
 # Check what's actually inside a built image
 podman run --rm localhost/drillbit-test_backend:latest pip list
 
+# Check (and ensure) that podman.socket is running:
+# Linux:
+
+systemctl --user status podman.socket # check status.
+systemctl --user enable --now podman.socket # enable and start if not running.
+
+# MacOS:
+podman machine start # start the Podman Machine if not already running. It is also possible to set it to auto-start in Podman Desktop settings.
+
 # Verify syntax before rebuilding
 python3 -c "import ast; ast.parse(open('backend/main.py').read()); print('syntax ok')"
 ```
