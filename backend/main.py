@@ -21,7 +21,7 @@ def _truncate(text: str, max_chars: int) -> str:
     cut = text[:max_chars]
     last_period = cut.rfind(".")
     if last_period > 0:
-        return cut[:last_period + 1]
+        return cut[: last_period + 1]
     return cut
 
 
@@ -29,7 +29,10 @@ def fetch_copr_project_stats(owner: str, project: str) -> dict:
     """Fetch live metadata for a COPR project directly from the COPR API."""
     try:
         with httpx.Client(timeout=5) as client:
-            r = client.get(f"{COPR_API}/project", params={"ownername": owner, "projectname": project})
+            r = client.get(
+                f"{COPR_API}/project",
+                params={"ownername": owner, "projectname": project},
+            )
             if r.status_code != 200:
                 return {}
             data = r.json()
@@ -80,7 +83,9 @@ async def search(q: str, limit: int = 5):
         candidates = [
             {
                 "name": results["metadatas"][0][i].get("name", results["ids"][0][i]),
-                "summary": results["metadatas"][0][i].get("summary", results["documents"][0][i][:120]),
+                "summary": results["metadatas"][0][i].get(
+                    "summary", results["documents"][0][i][:120]
+                ),
                 "copr_project": results["metadatas"][0][i].get("copr_project", ""),
                 "score": round(1.0 - float(results["distances"][0][i]), 4),
             }
@@ -94,7 +99,7 @@ async def search(q: str, limit: int = 5):
     # Step 3: LLM re-ranking — ask the model to pick the best matches from candidates
     if candidates:
         candidate_list = "\n".join(
-            f"{i+1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
+            f"{i + 1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
         )
         try:
             resp = llm.chat.completions.create(
@@ -126,9 +131,15 @@ async def search(q: str, limit: int = 5):
                     {
                         "name": p["name"],
                         "summary": candidate_map.get(p["name"], {}).get("summary", ""),
-                        "copr_project": candidate_map.get(p["name"], {}).get("copr_project", ""),
-                        "copr_description": candidate_map.get(p["name"], {}).get("description", ""),
-                        "homepage": candidate_map.get(p["name"], {}).get("homepage", ""),
+                        "copr_project": candidate_map.get(p["name"], {}).get(
+                            "copr_project", ""
+                        ),
+                        "copr_description": candidate_map.get(p["name"], {}).get(
+                            "description", ""
+                        ),
+                        "homepage": candidate_map.get(p["name"], {}).get(
+                            "homepage", ""
+                        ),
                         "contact": candidate_map.get(p["name"], {}).get("contact", ""),
                         "reason": p.get("reason", ""),
                         "score": candidate_map.get(p["name"], {}).get("score", 0.0),
@@ -165,7 +176,13 @@ async def search(q: str, limit: int = 5):
         if match:
             pkgs = json.loads(match.group())
             return [
-                {"name": p["name"], "summary": p.get("summary", ""), "copr_project": "", "reason": "", "score": 1.0}
+                {
+                    "name": p["name"],
+                    "summary": p.get("summary", ""),
+                    "copr_project": "",
+                    "reason": "",
+                    "score": 1.0,
+                }
                 for p in pkgs[:limit]
             ]
     except Exception:

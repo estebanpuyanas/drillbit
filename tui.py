@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drillbit TUI — AI-powered Fedora package discovery."""
+"""Drillbit TUI: AI-powered Fedora package discovery."""
 
 from __future__ import annotations
 
@@ -25,12 +25,12 @@ BACKEND_URL = "http://localhost:8000"
 
 # (package dict key, display label, visible by default)
 AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
-    ("name",         "Package",      True),
-    ("summary",      "Summary",      True),
-    ("score",        "Score",        False),
-    ("reason",       "Reason",       False),
+    ("name", "Package", True),
+    ("summary", "Summary", True),
+    ("score", "Score", False),
+    ("reason", "Reason", False),
     ("copr_project", "COPR Project", False),
-    ("license",      "License",      False),
+    ("license", "License", False),
     ("last_updated", "Last Updated", False),
 ]
 
@@ -38,9 +38,9 @@ ASCII_ART = r"""
         /\          /\          /\
        /  \   /\   /  \   /\   /  \
       / /\ \ /  \ / /\ \ /  \ / /\ \
-     /_/  \_/    \_/  \_/    \_/  \_\
-    |       F E D O R A   R O C K    |
-    |_________________________________|
+     /_/  \_/    \_/  \_/    \_/  \_\____
+    |       C O P R  M O U N T A I N    |
+    |___________________________________|
               | | | | |
             .-----------.
             |   D R I L L
@@ -51,10 +51,12 @@ ASCII_ART = r"""
 """
 
 APP_TITLE = r"""
-  ___  ____  __  __  __    ____  __  ____
- |   \|  _ \|  ||  ||  |  |  _ \|  ||_  _|
- | o  ) /\ \|  ||  ||  |_ | __ /|  |  ||
- |___/|_||_/|__||__||____||_|   |__|  |_|
+██████╗ ██████╗ ██╗██╗     ██╗     ██████╗ ██╗████████╗
+██╔══██╗██╔══██╗██║██║     ██║     ██╔══██╗██║╚══██╔══╝
+██║  ██║██████╔╝██║██║     ██║     ██████╔╝██║   ██║   
+██║  ██║██╔══██╗██║██║     ██║     ██╔══██╗██║   ██║   
+██████╔╝██║  ██║██║███████╗███████╗██████╔╝██║   ██║   
+╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═════╝ ╚═╝   ╚═╝
 """
 
 DRILLBIT_CSS = """
@@ -191,7 +193,7 @@ Footer {
 
 
 class DrillbitApp(App):
-    """Drillbit — AI-powered Fedora package discovery TUI."""
+    """Drillbit: AI-powered Fedora package discovery TUI."""
 
     CSS = DRILLBIT_CSS
 
@@ -219,7 +221,9 @@ class DrillbitApp(App):
             yield Static("AI-powered package discovery for Fedora", id="tagline")
 
         with Vertical(id="search-container"):
-            yield Label("What do you need? Describe it in plain English:", id="search-label")
+            yield Label(
+                "What do you need? Describe it in plain English:", id="search-label"
+            )
             with Center():
                 yield Input(
                     placeholder='e.g. "a tool for editing video files" or "screen recorder"',
@@ -231,7 +235,9 @@ class DrillbitApp(App):
         with Horizontal(id="results-area"):
             with Vertical(id="results-container"):
                 yield Static("[ Results ]  (c: toggle columns)", id="results-title")
-                yield DataTable(id="results-table", zebra_stripes=False, cursor_type="row")
+                yield DataTable(
+                    id="results-table", zebra_stripes=False, cursor_type="row"
+                )
 
             with Vertical(id="column-picker"):
                 yield Static("Columns", id="column-picker-title")
@@ -342,11 +348,15 @@ class DrillbitApp(App):
     @work(exclusive=True, thread=True)
     def run_search(self, query: str) -> None:
         self.call_from_thread(self._set_loading, True)
-        self.call_from_thread(self._set_status, f'Drilling into packages for: "{query}"...', "info")
+        self.call_from_thread(
+            self._set_status, f'Drilling into packages for: "{query}"...', "info"
+        )
 
         try:
             with httpx.Client(timeout=60.0) as client:
-                resp = client.get(f"{BACKEND_URL}/search", params={"q": query, "limit": 7})
+                resp = client.get(
+                    f"{BACKEND_URL}/search", params={"q": query, "limit": 7}
+                )
                 resp.raise_for_status()
                 packages = resp.json()
         except httpx.ConnectError:
@@ -382,7 +392,10 @@ class DrillbitApp(App):
 
     def _update_results(self, packages: list[dict], query: str) -> None:
         if not packages:
-            self._set_status(f'No packages found for "{query}". Try a different description.', "error")
+            self._set_status(
+                f'No packages found for "{query}". Try a different description.',
+                "error",
+            )
             return
         self._last_results = packages
         self._fill_rows()
