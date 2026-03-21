@@ -7,10 +7,4 @@ chromadb
 openai
 httpx
 torch
-fastapi
-uvicorn
-sentence-transformers
-chromadb
-openai
-httpx
-httpx
+fastmcp

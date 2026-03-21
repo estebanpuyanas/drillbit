@@ -1,6 +1,7 @@
 import json
 import re
 
+import httpx
 from fastapi import FastAPI
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
@@ -10,6 +11,37 @@ from chroma import client, collection
 app = FastAPI()
 llm = OpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
+COPR_API = "https://copr.fedorainfracloud.org/api_3"
+
+
+def fetch_copr_project_stats(owner: str, project: str) -> dict:
+    """Fetch live metadata for a COPR project directly from the COPR API."""
+    try:
+        with httpx.Client(timeout=5) as client:
+            r = client.get(f"{COPR_API}/project", params={"ownername": owner, "projectname": project})
+            if r.status_code != 200:
+                return {}
+            data = r.json()
+            return {
+                "homepage": data.get("homepage", ""),
+                "contact": data.get("contact", ""),
+                "description": (data.get("description") or "")[:200],
+            }
+    except Exception:
+        return {}
+
+
+def enrich_candidates(candidates: list) -> list:
+    """Fetch live COPR stats for each candidate."""
+    enriched = []
+    for c in candidates:
+        copr_project = c.get("copr_project", "")
+        extra = {}
+        if copr_project and "/" in copr_project:
+            owner, project = copr_project.split("/", 1)
+            extra = fetch_copr_project_stats(owner, project)
+        enriched.append({**c, **extra})
+    return enriched
 
 
 @app.get("/health")
@@ -44,7 +76,11 @@ async def search(q: str, limit: int = 5):
             for i in range(len(results["ids"][0]))
         ]
 
-    # Step 2: LLM re-ranking — ask the model to pick the best matches from candidates
+    # Step 2: Enrich candidates with live COPR metadata via MCP tools
+    if candidates:
+        candidates = enrich_candidates(candidates)
+
+    # Step 3: LLM re-ranking — ask the model to pick the best matches from candidates
     if candidates:
         candidate_list = "\n".join(
             f"{i+1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
@@ -80,6 +116,9 @@ async def search(q: str, limit: int = 5):
                         "name": p["name"],
                         "summary": candidate_map.get(p["name"], {}).get("summary", ""),
                         "copr_project": candidate_map.get(p["name"], {}).get("copr_project", ""),
+                        "copr_description": candidate_map.get(p["name"], {}).get("description", ""),
+                        "homepage": candidate_map.get(p["name"], {}).get("homepage", ""),
+                        "contact": candidate_map.get(p["name"], {}).get("contact", ""),
                         "reason": p.get("reason", ""),
                         "score": candidate_map.get(p["name"], {}).get("score", 0.0),
                     }
