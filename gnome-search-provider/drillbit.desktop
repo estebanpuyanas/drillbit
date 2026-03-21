@@ -5,5 +5,4 @@ Exec=INSTALL_PATH/search_provider.py
 Icon=system-software-install
 Type=Application
 Categories=Utility;PackageManager;Settings;
-# NoDisplay keeps it out of the app grid — it's a search provider, not a launchable app
-NoDisplay=true
+DBusActivatable=true

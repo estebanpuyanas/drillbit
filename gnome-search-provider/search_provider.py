@@ -86,9 +86,7 @@ class DrillbitSearchProvider(dbus.service.Object):
                 {
                     "id": dbus.String(pkg_id),
                     "name": dbus.String(pkg.get("name", pkg_id)),
-                    "description": dbus.String(
-                        pkg.get("summary", "Fedora package")
-                    ),
+                    "description": dbus.String(pkg.get("summary", "Fedora package")),
                     # Shown in the clipboard tooltip and used by some shell themes
                     "clipboardText": dbus.String(f"sudo dnf install {pkg_id}"),
                     # Generic package icon — works without any icon theme extras
