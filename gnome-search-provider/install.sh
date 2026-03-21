@@ -44,6 +44,27 @@ sed "s|INSTALL_PATH|$INSTALL_DIR|g" \
 systemctl --user daemon-reload
 systemctl --user enable --now drillbit-search-provider.service
 
+# ── gsettings: ensure provider is not disabled and appears in sort-order ──────
+DESKTOP_ID="drillbit.desktop"
+
+# Remove from disabled list if present
+DISABLED=$(gsettings get org.gnome.desktop.search-providers disabled 2>/dev/null || echo "@as []")
+if echo "$DISABLED" | grep -q "$DESKTOP_ID"; then
+    NEW_DISABLED=$(echo "$DISABLED" | sed "s|'$DESKTOP_ID', ||g; s|, '$DESKTOP_ID'||g; s|'$DESKTOP_ID'||g")
+    gsettings set org.gnome.desktop.search-providers disabled "$NEW_DISABLED"
+fi
+
+# Prepend to sort-order list if not already present
+SORT=$(gsettings get org.gnome.desktop.search-providers sort-order 2>/dev/null || echo "@as []")
+if ! echo "$SORT" | grep -q "$DESKTOP_ID"; then
+    if [ "$SORT" = "@as []" ] || [ "$SORT" = "[]" ]; then
+        gsettings set org.gnome.desktop.search-providers sort-order "['$DESKTOP_ID']"
+    else
+        NEW_SORT=$(echo "$SORT" | sed "s/\[/['$DESKTOP_ID', /")
+        gsettings set org.gnome.desktop.search-providers sort-order "$NEW_SORT"
+    fi
+fi
+
 echo ""
 echo "================================================================"
 echo "  Drillbit Search Provider — installed successfully"
@@ -65,12 +86,12 @@ echo ""
 echo "    GNOME Shell only picks up new search providers at login."
 echo "    There is no command to hot-reload it — a full log out/in is required."
 echo ""
-echo "STEP 4 — Enable Drillbit in GNOME Settings (required on GNOME 40+):"
+echo "STEP 4 — Confirm Drillbit is enabled in GNOME Settings:"
 echo ""
-echo "    Settings → Search → scroll down → toggle 'Drillbit' ON"
+echo "    Settings → Search → scroll down → confirm 'Drillbit' is toggled ON"
 echo ""
-echo "    If Drillbit does not appear in the list, the desktop entry or"
-echo "    search provider file was not picked up. Run:"
+echo "    The installer enabled it automatically via gsettings. If it still"
+echo "    does not appear in the list, the desktop entry was not picked up. Run:"
 echo "    desktop-file-validate $DESKTOP_DIR/drillbit.desktop"
 echo ""
 echo "STEP 5 — Test it:"
