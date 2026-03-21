@@ -1,8 +1,8 @@
 # Drillbit 🪨⛏️
 
-> AI-powered package discovery for Fedora. Describe what you need in plain English — Drillbit finds, ranks, and installs the right package.
+> AI-powered package discovery for Fedora. Describe what you need in plain English and Drillbit finds, ranks, and installs the right package.
 
-Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**. Everything runs locally — no cloud subscriptions, no data leaving your machine.
+Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**. Everything runs locally, no cloud subscriptions, no data leaving your machine.
 
 ---
 
@@ -61,7 +61,7 @@ The **TUI runs on the host**, not in a container since it needs direct terminal 
 - **Git**
 
 > [!NOTE]
-> **Mac users**: Install [Podman Desktop](https://podman-desktop.io/) — it handles the Podman Machine (Linux VM) setup for you. Do this before the day of the event, first-time init takes a few minutes.
+> **Mac users**: Install [Podman Desktop](https://podman-desktop.io/) which it handles the Podman Machine (Linux VM) setup for you. Do this before the day of the event, first-time init takes a few minutes.
 >
 > **Windows users**: Install Podman in WSL2 or use Podman Desktop for Windows.
 
@@ -73,7 +73,7 @@ The **TUI runs on the host**, not in a container since it needs direct terminal 
 
 This project uses **RamaLama** (Red Hat's local LLM runtime), which runs models as OCI containers internally and requires Podman. Docker cannot provide the privileges RamaLama needs at runtime. Additionally, since this is a RedHat hackathon it makes sense to use their tools.
 
-Podman is **Docker-compatible**: the same `Containerfile` format, same image registries, nearly identical CLI. You can have both installed simultaneously — they don't conflict.
+Podman is **Docker-compatible**: the same `Containerfile` format, same image registries, nearly identical CLI. You can have both installed simultaneously as they don't conflict.
 
 ### Linux (Arch/EndeavourOS)
 
