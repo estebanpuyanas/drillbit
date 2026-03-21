@@ -26,15 +26,6 @@ BACKEND_URL = "http://localhost:8000"
 
 # (package dict key, display label, visible by default)
 AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
-<<<<<<< Updated upstream
-    ("name", "Package", True),
-    ("summary", "Summary", True),
-    ("score", "Score", False),
-    ("reason", "Reason", False),
-    ("copr_project", "COPR Project", False),
-    ("license", "License", False),
-    ("last_updated", "Last Updated", False),
-=======
     ("name",             "Package",      True),
     ("copr_description", "Description",  True),
     ("reason",           "Reason",       True),
@@ -46,7 +37,6 @@ AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
     ("copr_project",     "COPR Project", False),
     ("homepage",         "Homepage",     False),
     ("contact",          "Contact",      False),
->>>>>>> Stashed changes
 ]
 
 ASCII_ART = r"""
