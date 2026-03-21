@@ -3,4 +3,4 @@ FROM quay.io/ramalama/ramalama:latest
 # ramalama serve exposes an OpenAI-compatible HTTP API on 8080
 EXPOSE 8080
 
-ENTRYPOINT ["ramalama", "serve", "--port", "8080", "ollama://llama3.2:3b"]
+ENTRYPOINT ["ramalama", "serve", "--port", "8080", "--ctx-size", "4096", "ollama://llama3.2:3b"]
