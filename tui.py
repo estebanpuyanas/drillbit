@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import datetime
 import httpx
 from rich.text import Text
 from textual import on, work
@@ -25,6 +26,7 @@ BACKEND_URL = "http://localhost:8000"
 
 # (package dict key, display label, visible by default)
 AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
+<<<<<<< Updated upstream
     ("name", "Package", True),
     ("summary", "Summary", True),
     ("score", "Score", False),
@@ -32,6 +34,19 @@ AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
     ("copr_project", "COPR Project", False),
     ("license", "License", False),
     ("last_updated", "Last Updated", False),
+=======
+    ("name",             "Package",      True),
+    ("copr_description", "Description",  True),
+    ("reason",           "Reason",       True),
+    ("score",            "Score",        False),
+    ("version",          "Version",      False),
+    ("build_state",      "Build State",  False),
+    ("submitted_on",     "Submitted",    False),
+    ("ended_on",         "Last Built",   False),
+    ("copr_project",     "COPR Project", False),
+    ("homepage",         "Homepage",     False),
+    ("contact",          "Contact",      False),
+>>>>>>> Stashed changes
 ]
 
 ASCII_ART = r"""
@@ -295,10 +310,15 @@ class DrillbitApp(App):
                 return Text(pct, style="bold red")
             except (TypeError, ValueError):
                 return str(value)
-        if key == "summary":
-            return str(value)[:72] + "…" if len(str(value)) > 72 else str(value)
+        if key == "copr_description":
+            return str(value)[:80] + "…" if len(str(value)) > 80 else str(value)
         if key == "reason":
             return str(value)[:80] + "…" if len(str(value)) > 80 else str(value)
+        if key in ("submitted_on", "ended_on"):
+            try:
+                return datetime.datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d")
+            except (TypeError, ValueError):
+                return "—"
         return str(value)
 
     @on(SelectionList.SelectedChanged, "#column-list")

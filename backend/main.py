@@ -45,8 +45,36 @@ def fetch_copr_project_stats(owner: str, project: str) -> dict:
         return {}
 
 
+def fetch_latest_build(owner: str, project: str, package: str) -> dict:
+    """Fetch the latest build timestamps and version for a package."""
+    try:
+        with httpx.Client(timeout=5) as client:
+            r = client.get(f"{COPR_API}/build/list", params={
+                "ownername": owner,
+                "projectname": project,
+                "packagename": package,
+                "limit": 1,
+                "order": "id",
+                "order_type": "DESC",
+            })
+            if r.status_code != 200:
+                return {}
+            items = r.json().get("items", [])
+            if not items:
+                return {}
+            build = items[0]
+            return {
+                "build_state": build.get("state", ""),
+                "submitted_on": build.get("submitted_on"),
+                "ended_on": build.get("ended_on"),
+                "version": (build.get("source_package") or {}).get("version", ""),
+            }
+    except Exception:
+        return {}
+
+
 def enrich_candidates(candidates: list) -> list:
-    """Fetch live COPR stats for each candidate."""
+    """Fetch live COPR stats and latest build info for each candidate."""
     enriched = []
     for c in candidates:
         copr_project = c.get("copr_project", "")
@@ -54,6 +82,7 @@ def enrich_candidates(candidates: list) -> list:
         if copr_project and "/" in copr_project:
             owner, project = copr_project.split("/", 1)
             extra = fetch_copr_project_stats(owner, project)
+            extra.update(fetch_latest_build(owner, project, c["name"]))
         enriched.append({**c, **extra})
     return enriched
 
@@ -130,6 +159,7 @@ async def search(q: str, limit: int = 5):
                 return [
                     {
                         "name": p["name"],
+                        "version": candidate_map.get(p["name"], {}).get("version", ""),
                         "summary": candidate_map.get(p["name"], {}).get("summary", ""),
                         "copr_project": candidate_map.get(p["name"], {}).get(
                             "copr_project", ""
@@ -141,6 +171,9 @@ async def search(q: str, limit: int = 5):
                             "homepage", ""
                         ),
                         "contact": candidate_map.get(p["name"], {}).get("contact", ""),
+                        "build_state": candidate_map.get(p["name"], {}).get("build_state", ""),
+                        "submitted_on": candidate_map.get(p["name"], {}).get("submitted_on"),
+                        "ended_on": candidate_map.get(p["name"], {}).get("ended_on"),
                         "reason": p.get("reason", ""),
                         "score": candidate_map.get(p["name"], {}).get("score", 0.0),
                     }
