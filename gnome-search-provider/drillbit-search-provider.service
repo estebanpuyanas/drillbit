@@ -3,7 +3,8 @@ Description=Drillbit GNOME Shell Search Provider
 After=graphical-session.target
 
 [Service]
-Type=simple
+Type=dbus
+BusName=org.drillbit.SearchProvider
 ExecStart=/usr/bin/env python3 INSTALL_PATH/search_provider.py
 Restart=on-failure
 RestartSec=3

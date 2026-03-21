@@ -22,7 +22,10 @@ cp "$SCRIPT_DIR/search_provider.py" "$INSTALL_DIR/search_provider.py"
 chmod +x "$INSTALL_DIR/search_provider.py"
 
 # ── Desktop entry ─────────────────────────────────────────────────────────────
-cp "$SCRIPT_DIR/drillbit.desktop" "$DESKTOP_DIR/drillbit.desktop"
+sed "s|INSTALL_PATH|$INSTALL_DIR|g" \
+    "$SCRIPT_DIR/drillbit.desktop" \
+    > "$DESKTOP_DIR/drillbit.desktop"
+update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 
 # ── GNOME Shell search provider registration ──────────────────────────────────
 cp "$SCRIPT_DIR/drillbit.search-provider.ini" \
