@@ -1,0 +1,12 @@
+[Unit]
+Description=Drillbit GNOME Shell Search Provider
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 INSTALL_PATH/search_provider.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

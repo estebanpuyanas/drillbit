@@ -1,0 +1,5 @@
+# D-Bus session service file — enables on-demand activation by GNOME Shell.
+# Install to: ~/.local/share/dbus-1/services/
+[D-BUS Service]
+Name=org.drillbit.SearchProvider
+Exec=/usr/bin/env python3 INSTALL_PATH/search_provider.py

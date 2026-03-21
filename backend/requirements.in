@@ -13,3 +13,4 @@ sentence-transformers
 chromadb
 openai
 httpx
+httpx
