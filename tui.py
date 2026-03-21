@@ -29,14 +29,10 @@ AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
     ("name",             "Package",      True),
     ("copr_description", "Description",  True),
     ("reason",           "Reason",       True),
-    ("score",            "Score",        False),
     ("version",          "Version",      False),
-    ("build_state",      "Build State",  False),
     ("submitted_on",     "Submitted",    False),
     ("ended_on",         "Last Built",   False),
     ("copr_project",     "COPR Project", False),
-    ("homepage",         "Homepage",     False),
-    ("contact",          "Contact",      False),
 ]
 
 ASCII_ART = r"""
