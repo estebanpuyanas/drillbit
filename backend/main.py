@@ -14,6 +14,17 @@ embedder = SentenceTransformer("all-MiniLM-L6-v2")
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
 
 
+def _truncate(text: str, max_chars: int) -> str:
+    """Truncate text to max_chars, ending at the last complete sentence."""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    last_period = cut.rfind(".")
+    if last_period > 0:
+        return cut[:last_period + 1]
+    return cut
+
+
 def fetch_copr_project_stats(owner: str, project: str) -> dict:
     """Fetch live metadata for a COPR project directly from the COPR API."""
     try:
@@ -25,7 +36,7 @@ def fetch_copr_project_stats(owner: str, project: str) -> dict:
             return {
                 "homepage": data.get("homepage", ""),
                 "contact": data.get("contact", ""),
-                "description": (data.get("description") or "")[:200],
+                "description": _truncate(data.get("description") or "", 300),
             }
     except Exception:
         return {}
