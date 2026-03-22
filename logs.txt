@@ -1,0 +1,290 @@
+[1;32m[ramalama]   |[0m cannot open `/run/user/1000/crun/21bf8239afd5efea3d0336f0f6bdf670fcf7fa9f553f04415ac788ea4a91eb1b/exec.fifo`: No such file or directory
+[1;32m[ramalama]   |[0m Error: unable to start container 21bf8239afd5efea3d0336f0f6bdf670fcf7fa9f553f04415ac788ea4a91eb1b: `/usr/bin/crun start 21bf8239afd5efea3d0336f0f6bdf670fcf7fa9f553f04415ac788ea4a91eb1b` failed: exit status 1
+[1;33m[backend]    |[0m cannot open `/run/user/1000/crun/c46094884e20bfc0bf700b61952b7ff407c427e47a18b5f23228e75dcde25d6b/exec.fifo`: No such file or directory
+[1;34m[mcp-server] |[0m cannot open `/run/user/1000/crun/90f90d3bacb75faa1cca8d7432851da50553ca42cf28231461e04008f34f9ced/exec.fifo`: No such file or directory
+[1;34m[mcp-server] |[0m Error: unable to start container 90f90d3bacb75faa1cca8d7432851da50553ca42cf28231461e04008f34f9ced: `/usr/bin/crun start 90f90d3bacb75faa1cca8d7432851da50553ca42cf28231461e04008f34f9ced` failed: exit status 1
+[1;33m[backend]    |[0m Error: unable to start container c46094884e20bfc0bf700b61952b7ff407c427e47a18b5f23228e75dcde25d6b: `/usr/bin/crun start c46094884e20bfc0bf700b61952b7ff407c427e47a18b5f23228e75dcde25d6b` failed: exit status 1
+b3d868cebb6f2ecafb1ce2d3b2bdb8c33a7303923208b3e01731e865e552852b
+1089211ac27533b232d8d92c15052452bcd776645fb4c5e22befdebcd0a60f07
+4b57d8a821669541782b05ed148aec0ae77e7f97f2d243653d9a342ba976b857
+dc777774972d29268677308cf4dd48d63c5c0f67c707493bce34e5ffb22df17c
+drillbit_ramalama_1
+drillbit_mcp-server_1
+drillbit_ramalama_1
+drillbit_backend_1
+drillbit_ramalama_1
+b3d868cebb6f2ecafb1ce2d3b2bdb8c33a7303923208b3e01731e865e552852b
+[1;32m[ramalama]   |[0m load_backend: loaded RPC backend from /usr/bin/libggml-rpc.so
+[1;32m[ramalama]   |[0m ggml_vulkan: No devices found.
+[1;32m[ramalama]   |[0m load_backend: loaded Vulkan backend from /usr/bin/libggml-vulkan.so
+[1;32m[ramalama]   |[0m load_backend: loaded CPU backend from /usr/bin/libggml-cpu-zen4.so
+[1;32m[ramalama]   |[0m main: n_parallel is set to auto, using n_parallel = 4 and kv_unified = true
+[1;32m[ramalama]   |[0m build: 1 (a69d54f) with GNU 15.2.1 for Linux x86_64
+[1;32m[ramalama]   |[0m system info: n_threads = 4, n_threads_batch = 4, total_threads = 2
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m system_info: n_threads = 4 (n_threads_batch = 4) / 2 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m Running without SSL
+[1;32m[ramalama]   |[0m init: using 6 threads for HTTP server
+[1;32m[ramalama]   |[0m start: binding port with default address family
+[1;32m[ramalama]   |[0m main: loading model
+[1;32m[ramalama]   |[0m srv    load_model: loading model '/root/.local/share/ramalama/store/ollama/library/llama3.2/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff'
+[1;32m[ramalama]   |[0m common_init_result: fitting params to device memory, for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on
+[1;32m[ramalama]   |[0m llama_params_fit_impl: no devices with dedicated memory found
+[1;32m[ramalama]   |[0m llama_params_fit: successfully fit params to free device memory
+[1;32m[ramalama]   |[0m llama_params_fit: fitting params to free memory took 0.37 seconds
+[1;32m[ramalama]   |[0m llama_model_loader: loaded meta data with 30 key-value pairs and 255 tensors from /root/.local/share/ramalama/store/ollama/library/llama3.2/blobs/sha256-dde5aa3fc5ffc17176b5e8bdc82f587b24b2678c6c66101bf7da77af9f7ccdff (version GGUF V3 (latest))
+[1;32m[ramalama]   |[0m llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   0:                       general.architecture str              = llama
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   1:                               general.type str              = model
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   2:                               general.name str              = Llama 3.2 3B Instruct
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   3:                           general.finetune str              = Instruct
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   4:                           general.basename str              = Llama-3.2
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   5:                         general.size_label str              = 3B
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   6:                               general.tags arr[str,6]       = ["facebook", "meta", "pytorch", "llam...
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   7:                          general.languages arr[str,8]       = ["en", "de", "fr", "it", "pt", "hi", ...
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   8:                          llama.block_count u32              = 28
+[1;32m[ramalama]   |[0m llama_model_loader: - kv   9:                       llama.context_length u32              = 131072
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  10:                     llama.embedding_length u32              = 3072
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  11:                  llama.feed_forward_length u32              = 8192
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  12:                 llama.attention.head_count u32              = 24
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  13:              llama.attention.head_count_kv u32              = 8
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  14:                       llama.rope.freq_base f32              = 500000.000000
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  15:     llama.attention.layer_norm_rms_epsilon f32              = 0.000010
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  16:                 llama.attention.key_length u32              = 128
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  17:               llama.attention.value_length u32              = 128
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  18:                          general.file_type u32              = 15
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  19:                           llama.vocab_size u32              = 128256
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  20:                 llama.rope.dimension_count u32              = 128
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  21:                       tokenizer.ggml.model str              = gpt2
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  22:                         tokenizer.ggml.pre str              = llama-bpe
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  23:                      tokenizer.ggml.tokens arr[str,128256]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  24:                  tokenizer.ggml.token_type arr[i32,128256]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  25:                      tokenizer.ggml.merges arr[str,280147]  = ["Ġ Ġ", "Ġ ĠĠĠ", "ĠĠ ĠĠ", "...
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  26:                tokenizer.ggml.bos_token_id u32              = 128000
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  27:                tokenizer.ggml.eos_token_id u32              = 128009
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  28:                    tokenizer.chat_template str              = {{- bos_token }}\n{%- if custom_tools ...
+[1;32m[ramalama]   |[0m llama_model_loader: - kv  29:               general.quantization_version u32              = 2
+[1;32m[ramalama]   |[0m llama_model_loader: - type  f32:   58 tensors
+[1;32m[ramalama]   |[0m llama_model_loader: - type q4_K:  168 tensors
+[1;32m[ramalama]   |[0m llama_model_loader: - type q6_K:   29 tensors
+[1;32m[ramalama]   |[0m print_info: file format = GGUF V3 (latest)
+[1;32m[ramalama]   |[0m print_info: file type   = Q4_K - Medium
+[1;32m[ramalama]   |[0m print_info: file size   = 1.87 GiB (5.01 BPW) 
+[1;32m[ramalama]   |[0m load: 0 unused tokens
+[1;32m[ramalama]   |[0m load: printing all EOG tokens:
+[1;32m[ramalama]   |[0m load:   - 128001 ('<|end_of_text|>')
+[1;32m[ramalama]   |[0m load:   - 128008 ('<|eom_id|>')
+[1;32m[ramalama]   |[0m load:   - 128009 ('<|eot_id|>')
+[1;32m[ramalama]   |[0m load: special tokens cache size = 256
+[1;32m[ramalama]   |[0m load: token to piece cache size = 0.7999 MB
+[1;32m[ramalama]   |[0m print_info: arch                  = llama
+[1;32m[ramalama]   |[0m print_info: vocab_only            = 0
+[1;32m[ramalama]   |[0m print_info: no_alloc              = 0
+[1;32m[ramalama]   |[0m print_info: n_ctx_train           = 131072
+[1;32m[ramalama]   |[0m print_info: n_embd                = 3072
+[1;32m[ramalama]   |[0m print_info: n_embd_inp            = 3072
+[1;32m[ramalama]   |[0m print_info: n_layer               = 28
+[1;32m[ramalama]   |[0m print_info: n_head                = 24
+[1;32m[ramalama]   |[0m print_info: n_head_kv             = 8
+[1;32m[ramalama]   |[0m print_info: n_rot                 = 128
+[1;32m[ramalama]   |[0m print_info: n_swa                 = 0
+[1;32m[ramalama]   |[0m print_info: is_swa_any            = 0
+[1;32m[ramalama]   |[0m print_info: n_embd_head_k         = 128
+[1;32m[ramalama]   |[0m print_info: n_embd_head_v         = 128
+[1;32m[ramalama]   |[0m print_info: n_gqa                 = 3
+[1;32m[ramalama]   |[0m print_info: n_embd_k_gqa          = 1024
+[1;32m[ramalama]   |[0m print_info: n_embd_v_gqa          = 1024
+[1;32m[ramalama]   |[0m print_info: f_norm_eps            = 0.0e+00
+[1;32m[ramalama]   |[0m print_info: f_norm_rms_eps        = 1.0e-05
+[1;32m[ramalama]   |[0m print_info: f_clamp_kqv           = 0.0e+00
+[1;32m[ramalama]   |[0m print_info: f_max_alibi_bias      = 0.0e+00
+[1;32m[ramalama]   |[0m print_info: f_logit_scale         = 0.0e+00
+[1;32m[ramalama]   |[0m print_info: f_attn_scale          = 0.0e+00
+[1;32m[ramalama]   |[0m print_info: n_ff                  = 8192
+[1;32m[ramalama]   |[0m print_info: n_expert              = 0
+[1;32m[ramalama]   |[0m print_info: n_expert_used         = 0
+[1;32m[ramalama]   |[0m print_info: n_expert_groups       = 0
+[1;32m[ramalama]   |[0m print_info: n_group_used          = 0
+[1;32m[ramalama]   |[0m print_info: causal attn           = 1
+[1;32m[ramalama]   |[0m print_info: pooling type          = 0
+[1;32m[ramalama]   |[0m print_info: rope type             = 0
+[1;32m[ramalama]   |[0m print_info: rope scaling          = linear
+[1;32m[ramalama]   |[0m print_info: freq_base_train       = 500000.0
+[1;32m[ramalama]   |[0m print_info: freq_scale_train      = 1
+[1;32m[ramalama]   |[0m print_info: n_ctx_orig_yarn       = 131072
+[1;32m[ramalama]   |[0m print_info: rope_yarn_log_mul     = 0.0000
+[1;32m[ramalama]   |[0m print_info: rope_finetuned        = unknown
+[1;32m[ramalama]   |[0m print_info: model type            = 3B
+[1;32m[ramalama]   |[0m print_info: model params          = 3.21 B
+[1;32m[ramalama]   |[0m print_info: general.name          = Llama 3.2 3B Instruct
+[1;32m[ramalama]   |[0m print_info: vocab type            = BPE
+[1;32m[ramalama]   |[0m print_info: n_vocab               = 128256
+[1;32m[ramalama]   |[0m print_info: n_merges              = 280147
+[1;32m[ramalama]   |[0m print_info: BOS token             = 128000 '<|begin_of_text|>'
+[1;32m[ramalama]   |[0m print_info: EOS token             = 128009 '<|eot_id|>'
+[1;32m[ramalama]   |[0m print_info: EOT token             = 128009 '<|eot_id|>'
+[1;32m[ramalama]   |[0m print_info: EOM token             = 128008 '<|eom_id|>'
+[1;32m[ramalama]   |[0m print_info: LF token              = 198 'Ċ'
+[1;32m[ramalama]   |[0m print_info: EOG token             = 128001 '<|end_of_text|>'
+[1;32m[ramalama]   |[0m print_info: EOG token             = 128008 '<|eom_id|>'
+[1;32m[ramalama]   |[0m print_info: EOG token             = 128009 '<|eot_id|>'
+[1;32m[ramalama]   |[0m print_info: max token length      = 256
+[1;32m[ramalama]   |[0m load_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)
+[1;32m[ramalama]   |[0m load_tensors: offloading output layer to GPU
+[1;32m[ramalama]   |[0m load_tensors: offloading 27 repeating layers to GPU
+[1;32m[ramalama]   |[0m load_tensors: offloaded 29/29 layers to GPU
+[1;32m[ramalama]   |[0m load_tensors:   CPU_Mapped model buffer size =  1918.35 MiB
+[1;32m[ramalama]   |[0m load_tensors:   CPU_REPACK model buffer size =  1299.38 MiB
+[1;34m[mcp-server] |[0m 
+[1;34m[mcp-server] |[0m 
+[1;34m[mcp-server] |[0m ╭──────────────────────────────────────────────────────────────────────────────╮
+[1;34m[mcp-server] |[0m │                                                                              │
+[1;34m[mcp-server] |[0m │                                                                              │
+[1;34m[mcp-server] |[0m │                         ▄▀▀ ▄▀█ █▀▀ ▀█▀ █▀▄▀█ █▀▀ █▀█                        │
+[1;34m[mcp-server] |[0m │                         █▀  █▀█ ▄▄█  █  █ ▀ █ █▄▄ █▀▀                        │
+[1;34m[mcp-server] |[0m │                                                                              │
+[1;34m[mcp-server] |[0m │                                                                              │
+[1;34m[mcp-server] |[0m │                                FastMCP 3.1.1                                 │
+[1;34m[mcp-server] |[0m │                            https://gofastmcp.com                             │
+[1;34m[mcp-server] |[0m │                                                                              │
+[1;34m[mcp-server] |[0m │                    🖥  Server:      drillbit-mcp, 3.1.1                       │
+[1;34m[mcp-server] |[0m │                    🚀 Deploy free: https://fastmcp.cloud                     │
+[1;34m[mcp-server] |[0m │                                                                              │
+[1;34m[mcp-server] |[0m ╰──────────────────────────────────────────────────────────────────────────────╯
+[1;34m[mcp-server] |[0m 
+[1;34m[mcp-server] |[0m 
+[1;34m[mcp-server] |[0m [03/22/26 20:59:49] INFO     Starting MCP server 'drillbit-mcp' transport.py:273
+[1;34m[mcp-server] |[0m                              with transport 'sse' on                            
+[1;34m[mcp-server] |[0m                              http://0.0.0.0:8001/sse                            
+[1;34m[mcp-server] |[0m INFO:     Started server process [1]
+[1;34m[mcp-server] |[0m INFO:     Waiting for application startup.
+[1;34m[mcp-server] |[0m INFO:     Application startup complete.
+[1;34m[mcp-server] |[0m INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+[1;32m[ramalama]   |[0m .....................................................................................
+[1;32m[ramalama]   |[0m common_init_result: added <|end_of_text|> logit bias = -inf
+[1;32m[ramalama]   |[0m common_init_result: added <|eom_id|> logit bias = -inf
+[1;32m[ramalama]   |[0m common_init_result: added <|eot_id|> logit bias = -inf
+[1;32m[ramalama]   |[0m llama_context: constructing llama_context
+[1;32m[ramalama]   |[0m llama_context: n_seq_max     = 4
+[1;32m[ramalama]   |[0m llama_context: n_ctx         = 4096
+[1;32m[ramalama]   |[0m llama_context: n_ctx_seq     = 4096
+[1;32m[ramalama]   |[0m llama_context: n_batch       = 2048
+[1;32m[ramalama]   |[0m llama_context: n_ubatch      = 512
+[1;32m[ramalama]   |[0m llama_context: causal_attn   = 1
+[1;32m[ramalama]   |[0m llama_context: flash_attn    = auto
+[1;32m[ramalama]   |[0m llama_context: kv_unified    = true
+[1;32m[ramalama]   |[0m llama_context: freq_base     = 500000.0
+[1;32m[ramalama]   |[0m llama_context: freq_scale    = 1
+[1;32m[ramalama]   |[0m llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+[1;32m[ramalama]   |[0m llama_context:        CPU  output buffer size =     1.96 MiB
+[1;32m[ramalama]   |[0m llama_kv_cache:        CPU KV buffer size =   448.00 MiB
+[1;32m[ramalama]   |[0m llama_kv_cache: size =  448.00 MiB (  4096 cells,  28 layers,  4/1 seqs), K (f16):  224.00 MiB, V (f16):  224.00 MiB
+[1;32m[ramalama]   |[0m sched_reserve: reserving ...
+[1;32m[ramalama]   |[0m sched_reserve: Flash Attention was auto, set to enabled
+[1;32m[ramalama]   |[0m sched_reserve: resolving fused Gated Delta Net support:
+[1;32m[ramalama]   |[0m sched_reserve: fused Gated Delta Net (autoregressive) enabled
+[1;32m[ramalama]   |[0m sched_reserve: fused Gated Delta Net (chunked) enabled
+[1;32m[ramalama]   |[0m sched_reserve:        CPU compute buffer size =   262.50 MiB
+[1;32m[ramalama]   |[0m sched_reserve: graph nodes  = 875
+[1;32m[ramalama]   |[0m sched_reserve: graph splits = 1
+[1;32m[ramalama]   |[0m sched_reserve: reserve took 6.86 ms, sched copies = 1
+[1;32m[ramalama]   |[0m srv    load_model: initializing slots, n_slots = 4
+[1;32m[ramalama]   |[0m no implementations specified for speculative decoding
+[1;32m[ramalama]   |[0m slot   load_model: id  0 | task -1 | speculative decoding context not initialized
+[1;32m[ramalama]   |[0m slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+[1;32m[ramalama]   |[0m no implementations specified for speculative decoding
+[1;32m[ramalama]   |[0m slot   load_model: id  1 | task -1 | speculative decoding context not initialized
+[1;32m[ramalama]   |[0m slot   load_model: id  1 | task -1 | new slot, n_ctx = 4096
+[1;32m[ramalama]   |[0m no implementations specified for speculative decoding
+[1;32m[ramalama]   |[0m slot   load_model: id  2 | task -1 | speculative decoding context not initialized
+[1;32m[ramalama]   |[0m slot   load_model: id  2 | task -1 | new slot, n_ctx = 4096
+[1;32m[ramalama]   |[0m no implementations specified for speculative decoding
+[1;32m[ramalama]   |[0m slot   load_model: id  3 | task -1 | speculative decoding context not initialized
+[1;32m[ramalama]   |[0m slot   load_model: id  3 | task -1 | new slot, n_ctx = 4096
+[1;32m[ramalama]   |[0m srv    load_model: prompt cache is enabled, size limit: 8192 MiB
+[1;32m[ramalama]   |[0m srv    load_model: use `--cache-ram 0` to disable the prompt cache
+[1;32m[ramalama]   |[0m srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+[1;32m[ramalama]   |[0m init: chat template, example_format: '<|start_header_id|>system<|end_header_id|>
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m Cutting Knowledge Date: December 2023
+[1;32m[ramalama]   |[0m Today Date: 22 Mar 2026
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m Hello<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m Hi there<|eot_id|><|start_header_id|>user<|end_header_id|>
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m How are you?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+[1;32m[ramalama]   |[0m 
+[1;32m[ramalama]   |[0m '
+[1;32m[ramalama]   |[0m srv          init: init: chat template, thinking = 0
+[1;32m[ramalama]   |[0m main: model loaded
+[1;32m[ramalama]   |[0m main: server is listening on http://0.0.0.0:8080
+[1;32m[ramalama]   |[0m main: starting the main loop...
+[1;32m[ramalama]   |[0m srv  update_slots: all slots are idle
+[1;33m[backend]    |[0m Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[1;33m[backend]    |[0m Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 2939.67it/s]
+[1;33m[backend]    |[0m [1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+[1;33m[backend]    |[0m Key                     | Status     |  | 
+[1;33m[backend]    |[0m ------------------------+------------+--+-
+[1;33m[backend]    |[0m embeddings.position_ids | UNEXPECTED |  | 
+[1;33m[backend]    |[0m 
+[1;33m[backend]    |[0m [3mNotes:
+[1;33m[backend]    |[0m - UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
+[1;33m[backend]    |[0m INFO:     Started server process [1]
+[1;33m[backend]    |[0m INFO:     Waiting for application startup.
+[1;33m[backend]    |[0m INFO:     Application startup complete.
+[1;33m[backend]    |[0m INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+[1;32m[ramalama]   |[0m srv  params_from_: Chat format: peg-native
+[1;32m[ramalama]   |[0m slot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1
+[1;32m[ramalama]   |[0m slot launch_slot_: id  3 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist 
+[1;32m[ramalama]   |[0m slot launch_slot_: id  3 | task 0 | processing task, is_child = 0
+[1;32m[ramalama]   |[0m slot update_slots: id  3 | task 0 | new prompt, n_ctx_slot = 4096, n_keep = 0, task.n_tokens = 83
+[1;32m[ramalama]   |[0m slot update_slots: id  3 | task 0 | n_tokens = 0, memory_seq_rm [0, end)
+[1;32m[ramalama]   |[0m slot init_sampler: id  3 | task 0 | init sampler, took 0.01 ms, tokens: text = 83, total = 83
+[1;32m[ramalama]   |[0m slot update_slots: id  3 | task 0 | prompt processing done, n_tokens = 83, batch.n_tokens = 83
+[1;32m[ramalama]   |[0m slot print_timing: id  3 | task 0 | 
+[1;32m[ramalama]   |[0m prompt eval time =    3063.62 ms /    83 tokens (   36.91 ms per token,    27.09 tokens per second)
+[1;32m[ramalama]   |[0m        eval time =   11710.10 ms /   113 tokens (  103.63 ms per token,     9.65 tokens per second)
+[1;32m[ramalama]   |[0m       total time =   14773.73 ms /   196 tokens
+[1;32m[ramalama]   |[0m slot      release: id  3 | task 0 | stop processing: n_tokens = 195, truncated = 0
+[1;32m[ramalama]   |[0m srv  update_slots: all slots are idle
+[1;32m[ramalama]   |[0m srv  log_server_r: done request: POST /v1/chat/completions 10.89.0.3 200
+[1;33m[backend]    |[0m INFO:     10.89.0.3:58948 - "GET /search?q=video+editing+software HTTP/1.1" 200 OK
+[1;33m[backend]    |[0m INFO:     Shutting down
+[1;34m[mcp-server] |[0m INFO:     Shutting down
+[1;33m[backend]    |[0m INFO:     Waiting for application shutdown.
+[1;33m[backend]    |[0m INFO:     Application shutdown complete.
+[1;33m[backend]    |[0m INFO:     Finished server process [1]
+[1;34m[mcp-server] |[0m ERROR:    Cancel 0 running task(s), timeout graceful shutdown exceeded
+[1;34m[mcp-server] |[0m INFO:     Waiting for application shutdown.
+[1;34m[mcp-server] |[0m INFO:     Application shutdown complete.
+[1;34m[mcp-server] |[0m INFO:     Finished server process [1]
+[1;34m[mcp-server] |[0m Traceback (most recent call last):
+[1;34m[mcp-server] |[0m   File "/usr/local/lib/python3.12/asyncio/runners.py", line 118, in run
+[1;34m[mcp-server] |[0m     return self._loop.run_until_complete(task)
+[1;34m[mcp-server] |[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;34m[mcp-server] |[0m   File "/usr/local/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+[1;34m[mcp-server] |[0m     return future.result()
+[1;34m[mcp-server] |[0m            ^^^^^^^^^^^^^^^
+[1;34m[mcp-server] |[0m asyncio.exceptions.CancelledError
+[1;34m[mcp-server] |[0m 
+[1;34m[mcp-server] |[0m During handling of the above exception, another exception occurred:
+[1;34m[mcp-server] |[0m 
+[1;34m[mcp-server] |[0m Traceback (most recent call last):
+[1;34m[mcp-server] |[0m   File "/app/main.py", line 70, in <module>
+[1;34m[mcp-server] |[0m     mcp.run(transport="sse")
+[1;34m[mcp-server] |[0m   File "/usr/local/lib/python3.12/site-packages/fastmcp/server/mixins/transport.py", line 88, in run
+[1;34m[mcp-server] |[0m     anyio.run(
+[1;34m[mcp-server] |[0m   File "/usr/local/lib/python3.12/site-packages/anyio/_core/_eventloop.py", line 77, in run
+[1;34m[mcp-server] |[0m     return async_backend.run(func, args, {}, backend_options)
+[1;34m[mcp-server] |[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;34m[mcp-server] |[0m   File "/usr/local/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2342, in run
+[1;34m[mcp-server] |[0m     return runner.run(wrapper())
+[1;34m[mcp-server] |[0m            ^^^^^^^^^^^^^^^^^^^^^
+[1;34m[mcp-server] |[0m   File "/usr/local/lib/python3.12/asyncio/runners.py", line 123, in run
+[1;34m[mcp-server] |[0m     raise KeyboardInterrupt()
+[1;34m[mcp-server] |[0m KeyboardInterrupt
+[1;33m[backend]    |[0m process not running: No such process
