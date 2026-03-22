@@ -15,7 +15,7 @@ fi
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(eval echo "~$REAL_USER")
 REAL_UID=$(id -u "$REAL_USER")
-# Session bus vars needed for systemctl --user and gsettings when running as root
+# Session bus vars needed for gsettings when running as root
 USER_BUS="unix:path=/run/user/${REAL_UID}/bus"
 USER_RUNTIME="/run/user/${REAL_UID}"
 
@@ -26,10 +26,8 @@ SCRIPT_DEST="/usr/local/bin/drillbit-search-provider"
 DESKTOP_DIR="/usr/local/share/applications"
 SEARCH_PROVIDER_DIR="/usr/local/share/gnome-shell/search-providers"
 DBUS_SERVICES_DIR="/usr/local/share/dbus-1/services"
-SYSTEMD_USER_DIR="$REAL_HOME/.config/systemd/user"
 
-mkdir -p "$DESKTOP_DIR" "$SEARCH_PROVIDER_DIR" \
-         "$DBUS_SERVICES_DIR" "$SYSTEMD_USER_DIR"
+mkdir -p "$DESKTOP_DIR" "$SEARCH_PROVIDER_DIR" "$DBUS_SERVICES_DIR"
 
 # ── Install search provider script ────────────────────────────────────────────
 cp "$SCRIPT_DIR/search_provider.py" "$SCRIPT_DEST"
@@ -49,22 +47,6 @@ cp "$SCRIPT_DIR/drillbit.search-provider.ini" \
 sed "s|SCRIPT_PATH|$SCRIPT_DEST|g" \
     "$SCRIPT_DIR/org.drillbit.SearchProvider.service" \
     > "$DBUS_SERVICES_DIR/org.drillbit.SearchProvider.service"
-
-# ── Systemd user service ──────────────────────────────────────────────────────
-sed "s|SCRIPT_PATH|$SCRIPT_DEST|g" \
-    "$SCRIPT_DIR/drillbit-search-provider.service" \
-    > "$SYSTEMD_USER_DIR/drillbit-search-provider.service"
-chown "$REAL_USER:$REAL_USER" "$SYSTEMD_USER_DIR/drillbit-search-provider.service"
-
-sudo -u "$REAL_USER" \
-    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
-    XDG_RUNTIME_DIR="$USER_RUNTIME" \
-    systemctl --user daemon-reload
-
-sudo -u "$REAL_USER" \
-    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
-    XDG_RUNTIME_DIR="$USER_RUNTIME" \
-    systemctl --user enable --now drillbit-search-provider.service
 
 # ── gsettings: ensure provider is not disabled and appears in sort-order ──────
 DESKTOP_ID="drillbit.desktop"
@@ -111,12 +93,15 @@ echo "STEP 1 — Start the backend (if not already running):"
 echo ""
 echo "    cd $(dirname "$SCRIPT_DIR") && podman-compose up -d"
 echo ""
-echo "STEP 2 — Verify the service is running:"
+echo "STEP 2 — Verify the D-Bus object is reachable after login:"
 echo ""
-echo "    systemctl --user status drillbit-search-provider"
+echo "    gdbus introspect --session \\"
+echo "      --dest org.drillbit.SearchProvider \\"
+echo "      --object-path /org/drillbit/SearchProvider"
 echo ""
-echo "    You should see 'active (running)'. If it shows failed, check:"
-echo "    journalctl --user -u drillbit-search-provider -n 50"
+echo "    The provider is activated on-demand by D-Bus — no daemon to start."
+echo "    If introspect hangs or errors, check that the D-Bus service file was"
+echo "    installed: ls /usr/local/share/dbus-1/services/org.drillbit*"
 echo ""
 echo "STEP 3 — Log out and log back in."
 echo ""
@@ -131,13 +116,15 @@ echo "    The installer enabled it automatically via gsettings. If it still"
 echo "    does not appear in the list, the desktop entry was not picked up. Run:"
 echo "    desktop-file-validate /usr/local/share/applications/drillbit.desktop"
 echo ""
-echo "STEP 5 — Validate the D-Bus object is reachable after login:"
+echo "STEP 5 — Test a query from the command line:"
 echo ""
-echo "    gdbus introspect --session \\"
+echo "    gdbus call --session \\"
 echo "      --dest org.drillbit.SearchProvider \\"
-echo "      --object-path /org/drillbit/SearchProvider"
+echo "      --object-path /org/drillbit/SearchProvider \\"
+echo "      --method org.gnome.Shell.SearchProvider2.GetInitialResultSet \\"
+echo "      \"['video', 'editor']\""
 echo ""
-echo "STEP 6 — Test it:"
+echo "STEP 6 — Test it in GNOME:"
 echo ""
 echo "    Open the Activities overlay (Super key) and type:"
 echo "      video editor"
@@ -148,7 +135,6 @@ echo "    Drillbit results should appear within ~2 seconds."
 echo ""
 echo "----------------------------------------------------------------"
 echo "Useful commands:"
-echo "  Logs:   journalctl --user -u drillbit-search-provider -f"
-echo "  Status: systemctl --user status drillbit-search-provider"
-echo "  Stop:   systemctl --user stop drillbit-search-provider"
+echo "  Check bus:  busctl --user list | grep drillbit"
+echo "  Introspect: gdbus introspect --session --dest org.drillbit.SearchProvider --object-path /org/drillbit/SearchProvider"
 echo "================================================================"
