@@ -1,5 +1,3 @@
-# D-Bus session service file — enables on-demand activation by GNOME Shell.
-# Install to: ~/.local/share/dbus-1/services/
 [D-BUS Service]
 Name=org.drillbit.SearchProvider
 Exec=SCRIPT_PATH

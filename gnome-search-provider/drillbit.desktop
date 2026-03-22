@@ -1,8 +1,7 @@
 [Desktop Entry]
+Type=Application
 Name=Drillbit
 Comment=AI-powered package discovery for Fedora
 Exec=SCRIPT_PATH
 Icon=system-software-install
-Type=Application
-Categories=Utility;PackageManager;Settings;
 DBusActivatable=false
