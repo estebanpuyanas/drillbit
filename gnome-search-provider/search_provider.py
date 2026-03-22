@@ -68,7 +68,11 @@ class DrillbitSearchProvider(dbus.service.Object):
         Example: ['"video', 'editor"'] → 'video editor'
         """
         joined = " ".join(str(t) for t in terms)
-        if joined.startswith('"') and joined.endswith('"') and len(joined) >= MIN_QUERY_LEN + 2:
+        if (
+            joined.startswith('"')
+            and joined.endswith('"')
+            and len(joined) >= MIN_QUERY_LEN + 2
+        ):
             return joined[1:-1].strip()
         return None
 
