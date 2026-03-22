@@ -14,6 +14,10 @@ fi
 
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(eval echo "~$REAL_USER")
+REAL_UID=$(id -u "$REAL_USER")
+# Session bus vars needed for systemctl --user and gsettings when running as root
+USER_BUS="unix:path=/run/user/${REAL_UID}/bus"
+USER_RUNTIME="/run/user/${REAL_UID}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -51,27 +55,49 @@ sed "s|SCRIPT_PATH|$SCRIPT_DEST|g" \
     "$SCRIPT_DIR/drillbit-search-provider.service" \
     > "$SYSTEMD_USER_DIR/drillbit-search-provider.service"
 
-sudo -u "$REAL_USER" systemctl --user daemon-reload
-sudo -u "$REAL_USER" systemctl --user enable --now drillbit-search-provider.service
+sudo -u "$REAL_USER" \
+    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+    XDG_RUNTIME_DIR="$USER_RUNTIME" \
+    systemctl --user daemon-reload
+
+sudo -u "$REAL_USER" \
+    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+    XDG_RUNTIME_DIR="$USER_RUNTIME" \
+    systemctl --user enable --now drillbit-search-provider.service
 
 # ── gsettings: ensure provider is not disabled and appears in sort-order ──────
 DESKTOP_ID="drillbit.desktop"
 
 # Remove from disabled list if present
-DISABLED=$(sudo -u "$REAL_USER" gsettings get org.gnome.desktop.search-providers disabled 2>/dev/null || echo "@as []")
+DISABLED=$(sudo -u "$REAL_USER" \
+    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+    XDG_RUNTIME_DIR="$USER_RUNTIME" \
+    gsettings get org.gnome.desktop.search-providers disabled 2>/dev/null || echo "@as []")
 if echo "$DISABLED" | grep -q "$DESKTOP_ID"; then
     NEW_DISABLED=$(echo "$DISABLED" | sed "s|'$DESKTOP_ID', ||g; s|, '$DESKTOP_ID'||g; s|'$DESKTOP_ID'||g")
-    sudo -u "$REAL_USER" gsettings set org.gnome.desktop.search-providers disabled "$NEW_DISABLED"
+    sudo -u "$REAL_USER" \
+        DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+        XDG_RUNTIME_DIR="$USER_RUNTIME" \
+        gsettings set org.gnome.desktop.search-providers disabled "$NEW_DISABLED"
 fi
 
 # Prepend to sort-order list if not already present
-SORT=$(sudo -u "$REAL_USER" gsettings get org.gnome.desktop.search-providers sort-order 2>/dev/null || echo "@as []")
+SORT=$(sudo -u "$REAL_USER" \
+    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+    XDG_RUNTIME_DIR="$USER_RUNTIME" \
+    gsettings get org.gnome.desktop.search-providers sort-order 2>/dev/null || echo "@as []")
 if ! echo "$SORT" | grep -q "$DESKTOP_ID"; then
     if [ "$SORT" = "@as []" ] || [ "$SORT" = "[]" ]; then
-        sudo -u "$REAL_USER" gsettings set org.gnome.desktop.search-providers sort-order "['$DESKTOP_ID']"
+        sudo -u "$REAL_USER" \
+            DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+            XDG_RUNTIME_DIR="$USER_RUNTIME" \
+            gsettings set org.gnome.desktop.search-providers sort-order "['$DESKTOP_ID']"
     else
         NEW_SORT=$(echo "$SORT" | sed "s/\[/['$DESKTOP_ID', /")
-        sudo -u "$REAL_USER" gsettings set org.gnome.desktop.search-providers sort-order "$NEW_SORT"
+        sudo -u "$REAL_USER" \
+            DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+            XDG_RUNTIME_DIR="$USER_RUNTIME" \
+            gsettings set org.gnome.desktop.search-providers sort-order "$NEW_SORT"
     fi
 fi
 
