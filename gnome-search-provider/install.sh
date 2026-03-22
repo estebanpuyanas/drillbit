@@ -54,6 +54,7 @@ sed "s|SCRIPT_PATH|$SCRIPT_DEST|g" \
 sed "s|SCRIPT_PATH|$SCRIPT_DEST|g" \
     "$SCRIPT_DIR/drillbit-search-provider.service" \
     > "$SYSTEMD_USER_DIR/drillbit-search-provider.service"
+chown "$REAL_USER:$REAL_USER" "$SYSTEMD_USER_DIR/drillbit-search-provider.service"
 
 sudo -u "$REAL_USER" \
     DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
