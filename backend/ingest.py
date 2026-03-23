@@ -14,10 +14,10 @@ from sentence_transformers import SentenceTransformer
 from chroma import collection
 
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
-BATCH_SIZE = 64          # embeddings batch size
+BATCH_SIZE = 64  # embeddings batch size
 PROJECT_PAGE_SIZE = 100  # max allowed by COPR API
 PKG_PAGE_SIZE = 100
-MAX_PROJECTS = 500       # set to None to index everything
+MAX_PROJECTS = 500  # set to None to index everything
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -33,7 +33,7 @@ def copr_get(client: httpx.Client, path: str, params: dict) -> dict:
         except (httpx.HTTPStatusError, httpx.TransportError) as e:
             if attempt == 4:
                 raise
-            wait = 2 ** attempt
+            wait = 2**attempt
             print(f"  retrying {url} in {wait}s ({e})")
             time.sleep(wait)
 
@@ -42,10 +42,14 @@ def iter_projects(client: httpx.Client):
     """Yield all COPR projects, paginating through the full list."""
     offset = 0
     while True:
-        data = copr_get(client, "/project/list", {
-            "limit": PROJECT_PAGE_SIZE,
-            "offset": offset,
-        })
+        data = copr_get(
+            client,
+            "/project/list",
+            {
+                "limit": PROJECT_PAGE_SIZE,
+                "offset": offset,
+            },
+        )
         projects = data.get("items") or data.get("projects") or []
         if not projects:
             break
@@ -59,12 +63,16 @@ def iter_packages(client: httpx.Client, ownername: str, projectname: str):
     """Yield all packages in a COPR project."""
     offset = 0
     while True:
-        data = copr_get(client, "/package/list", {
-            "ownername": ownername,
-            "projectname": projectname,
-            "limit": PKG_PAGE_SIZE,
-            "offset": offset,
-        })
+        data = copr_get(
+            client,
+            "/package/list",
+            {
+                "ownername": ownername,
+                "projectname": projectname,
+                "limit": PKG_PAGE_SIZE,
+                "offset": offset,
+            },
+        )
         packages = data.get("items") or data.get("packages") or []
         if not packages:
             break
@@ -76,7 +84,9 @@ def iter_packages(client: httpx.Client, ownername: str, projectname: str):
 
 def flush_batch(ids, texts, metadatas):
     embeddings = model.encode(texts, show_progress_bar=False).tolist()
-    collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+    collection.upsert(
+        ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas
+    )
 
 
 def main():
@@ -111,14 +121,16 @@ def main():
 
                     ids.append(uid)
                     texts.append(text)
-                    metadatas.append({
-                        "name": pkg_name,
-                        "summary": summary[:500],
-                        "description": description[:1000],
-                        "copr_project": f"{owner}/{name}",
-                        "ownername": owner,
-                        "projectname": name,
-                    })
+                    metadatas.append(
+                        {
+                            "name": pkg_name,
+                            "summary": summary[:500],
+                            "description": description[:1000],
+                            "copr_project": f"{owner}/{name}",
+                            "ownername": owner,
+                            "projectname": name,
+                        }
+                    )
 
                     if len(ids) >= BATCH_SIZE:
                         flush_batch(ids, texts, metadatas)

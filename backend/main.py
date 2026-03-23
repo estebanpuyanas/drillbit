@@ -49,14 +49,17 @@ def fetch_latest_build(owner: str, project: str, package: str) -> dict:
     """Fetch the latest build timestamps and version for a package."""
     try:
         with httpx.Client(timeout=5) as client:
-            r = client.get(f"{COPR_API}/build/list", params={
-                "ownername": owner,
-                "projectname": project,
-                "packagename": package,
-                "limit": 1,
-                "order": "id",
-                "order_type": "DESC",
-            })
+            r = client.get(
+                f"{COPR_API}/build/list",
+                params={
+                    "ownername": owner,
+                    "projectname": project,
+                    "packagename": package,
+                    "limit": 1,
+                    "order": "id",
+                    "order_type": "DESC",
+                },
+            )
             if r.status_code != 200:
                 return {}
             items = r.json().get("items", [])
@@ -171,8 +174,12 @@ async def search(q: str, limit: int = 5):
                             "homepage", ""
                         ),
                         "contact": candidate_map.get(p["name"], {}).get("contact", ""),
-                        "build_state": candidate_map.get(p["name"], {}).get("build_state", ""),
-                        "submitted_on": candidate_map.get(p["name"], {}).get("submitted_on"),
+                        "build_state": candidate_map.get(p["name"], {}).get(
+                            "build_state", ""
+                        ),
+                        "submitted_on": candidate_map.get(p["name"], {}).get(
+                            "submitted_on"
+                        ),
                         "ended_on": candidate_map.get(p["name"], {}).get("ended_on"),
                         "reason": p.get("reason", ""),
                         "score": candidate_map.get(p["name"], {}).get("score", 0.0),

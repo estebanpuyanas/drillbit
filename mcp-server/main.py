@@ -10,11 +10,14 @@ COPR_API = "https://copr.fedorainfracloud.org/api_3"
 def get_package_info(ownername: str, projectname: str, packagename: str) -> dict:
     """Fetch live metadata for a specific package in a COPR project."""
     with httpx.Client(timeout=10) as client:
-        r = client.get(f"{COPR_API}/package", params={
-            "ownername": ownername,
-            "projectname": projectname,
-            "packagename": packagename,
-        })
+        r = client.get(
+            f"{COPR_API}/package",
+            params={
+                "ownername": ownername,
+                "projectname": projectname,
+                "packagename": packagename,
+            },
+        )
         if r.status_code != 200:
             return {"error": f"HTTP {r.status_code}"}
         pkg = r.json()
@@ -29,10 +32,13 @@ def get_package_info(ownername: str, projectname: str, packagename: str) -> dict
 def get_copr_project_stats(ownername: str, projectname: str) -> dict:
     """Fetch vote count and basic stats for a COPR project."""
     with httpx.Client(timeout=10) as client:
-        r = client.get(f"{COPR_API}/project", params={
-            "ownername": ownername,
-            "projectname": projectname,
-        })
+        r = client.get(
+            f"{COPR_API}/project",
+            params={
+                "ownername": ownername,
+                "projectname": projectname,
+            },
+        )
         if r.status_code != 200:
             return {"error": f"HTTP {r.status_code}"}
         project = r.json()
@@ -49,10 +55,13 @@ def get_copr_project_stats(ownername: str, projectname: str) -> dict:
 def search_copr_packages(query: str, limit: int = 5) -> list:
     """Search COPR for packages matching a keyword query."""
     with httpx.Client(timeout=10) as client:
-        r = client.get(f"{COPR_API}/package/search", params={
-            "query": query,
-            "limit": limit,
-        })
+        r = client.get(
+            f"{COPR_API}/package/search",
+            params={
+                "query": query,
+                "limit": limit,
+            },
+        )
         if r.status_code != 200:
             return []
         items = r.json().get("items") or []
@@ -60,7 +69,7 @@ def search_copr_packages(query: str, limit: int = 5) -> list:
             {
                 "name": p.get("name", ""),
                 "summary": p.get("summary", ""),
-                "copr_project": f"{p.get('ownername','')}/{p.get('projectname','')}",
+                "copr_project": f"{p.get('ownername', '')}/{p.get('projectname', '')}",
             }
             for p in items[:limit]
         ]

@@ -26,13 +26,13 @@ BACKEND_URL = "http://localhost:8000"
 
 # (package dict key, display label, visible by default)
 AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
-    ("name",             "Package",      True),
-    ("copr_description", "Description",  True),
-    ("reason",           "Reason",       True),
-    ("version",          "Version",      False),
-    ("submitted_on",     "Submitted",    False),
-    ("ended_on",         "Last Built",   False),
-    ("copr_project",     "COPR Project", False),
+    ("name", "Package", True),
+    ("copr_description", "Description", True),
+    ("reason", "Reason", True),
+    ("version", "Version", False),
+    ("submitted_on", "Submitted", False),
+    ("ended_on", "Last Built", False),
+    ("copr_project", "COPR Project", False),
 ]
 
 ASCII_ART = r"""
