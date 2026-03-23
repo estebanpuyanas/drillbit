@@ -35,30 +35,7 @@ AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
     ("copr_project", "COPR Project", False),
 ]
 
-ASCII_ART = r"""
-        /\          /\          /\
-       /  \   /\   /  \   /\   /  \
-      / /\ \ /  \ / /\ \ /  \ / /\ \
-     /_/  \_/    \_/  \_/    \_/  \_\____
-    |       C O P R  M O U N T A I N    |
-    |___________________________________|
-              | | | | |
-            .-----------.
-            |   D R I L L
-            |     B I T  |
-            '-----------'
-                 \|/
-                  V
-"""
-
-APP_TITLE = r"""
-██████╗ ██████╗ ██╗██╗     ██╗     ██████╗ ██╗████████╗
-██╔══██╗██╔══██╗██║██║     ██║     ██╔══██╗██║╚══██╔══╝
-██║  ██║██████╔╝██║██║     ██║     ██████╔╝██║   ██║   
-██║  ██║██╔══██╗██║██║     ██║     ██╔══██╗██║   ██║   
-██████╔╝██║  ██║██║███████╗███████╗██████╔╝██║   ██║   
-╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═════╝ ╚═╝   ╚═╝
-"""
+APP_TITLE = "DRILLBIT  —  AI-powered package discovery for Fedora"
 
 DRILLBIT_CSS = """
 Screen {
@@ -72,26 +49,14 @@ Screen > * {
 #header-container {
     height: auto;
     align: center middle;
-    padding: 1 0 0 0;
-    background: transparent;
-}
-
-#ascii-art {
-    text-align: center;
-    height: auto;
+    padding: 0;
     background: transparent;
 }
 
 #app-title {
     text-align: center;
     height: auto;
-    background: transparent;
-}
-
-#tagline {
-    text-align: center;
-    height: auto;
-    padding: 0 0 1 0;
+    padding: 1 0 0 0;
     background: transparent;
 }
 
@@ -217,9 +182,7 @@ class DrillbitApp(App):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="header-container"):
-            yield Static(ASCII_ART, id="ascii-art")
             yield Static(APP_TITLE, id="app-title")
-            yield Static("AI-powered package discovery for Fedora", id="tagline")
 
         with Vertical(id="search-container"):
             yield Label(
@@ -404,7 +367,7 @@ class DrillbitApp(App):
             )
             return
         self._last_results = packages
-        self._fill_rows()
+        self._rebuild_columns()
         count = len(packages)
         self._set_status(
             f"Found {count} package{'s' if count != 1 else ''} — arrow keys to browse, c to pick columns",
