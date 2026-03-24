@@ -1,0 +1,4 @@
+pytest
+respx
+fastapi[standard]
+httpx
