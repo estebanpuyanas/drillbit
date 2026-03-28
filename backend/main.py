@@ -5,8 +5,8 @@ import httpx
 from fastapi import FastAPI
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
-
-from chroma import client, collection
+from prompt import SYSTEM_PROMPT
+from chroma import collection
 
 app = FastAPI()
 llm = OpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
@@ -139,7 +139,7 @@ async def search(q: str, limit: int = 5):
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a Fedora package expert. Reply only with valid JSON, no prose.",
+                        "content": SYSTEM_PROMPT,
                     },
                     {
                         "role": "user",
@@ -199,7 +199,7 @@ async def search(q: str, limit: int = 5):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a Fedora package expert. Reply only with valid JSON, no prose.",
+                    "content": SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",
