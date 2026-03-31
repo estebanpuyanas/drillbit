@@ -1,0 +1,24 @@
+~/Desktop/projects/drillbit/..
+  .git
+  ◌ .pytest_cache
+  ◌ .venv
+  ✗ backend
+  chroma_data_snapshot
+  gnome-search-provider
+  ✗ mcp-server
+  ✗ ramalama
+  tests
+   ◌ .coverage
+   ◌ .env
+   .gitignore
+   .python-version
+   CLAUDE.md
+  󰈙 journald-logs.txt
+   LICENSE
+  󰈙 logs.txt
+   Makefile
+   ✗ podman-compose.yml
+  󰂺 README.md
+   requirements.in
+  󰈙 requirements.txt
+   tui.py
