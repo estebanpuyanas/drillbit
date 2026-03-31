@@ -17,7 +17,7 @@ COPR_API = "https://copr.fedorainfracloud.org/api_3"
 BATCH_SIZE = 64  # embeddings batch size
 PROJECT_PAGE_SIZE = 100  # max allowed by COPR API
 PKG_PAGE_SIZE = 100
-MAX_PROJECTS = 500  # set to None to index everything
+MAX_PROJECTS = None  # set to None to index everything
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
