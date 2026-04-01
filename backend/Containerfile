@@ -1,8 +1,11 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.in .
+
+RUN pip install pip-tools && \
+    pip-compile requirements.in && \
+    pip install --no-cache-dir -r requirements.txt
 
 RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 

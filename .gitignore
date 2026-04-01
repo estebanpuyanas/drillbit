@@ -208,3 +208,8 @@ __marimo__/
 
 # MacOS Files:
 .DS_Store
+
+# Since requirements.txt files pin architecture specific dependencies, exclude it and have 
+# Every developer pip-compile and pip-sync.
+requirements.txt
+*/requirements.txt
