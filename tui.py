@@ -35,36 +35,42 @@ AVAILABLE_COLUMNS: list[tuple[str, str, bool]] = [
     ("copr_project", "COPR Project", False),
 ]
 
-APP_TITLE = "DRILLBIT  —  AI-powered package discovery for Fedora"
+DRILLBIT_ASCII = """\
+  ██████╗ ██████╗ ██╗██╗      ██╗      ██████╗ ██╗████████╗
+  ██╔══██╗██╔══██╗██║██║      ██║      ██╔══██╗██║╚══██╔══╝
+  ██║  ██║██████╔╝██║██║      ██║      ██████╔╝██║   ██║
+  ██║  ██║██╔══██╗██║██║      ██║      ██╔══██╗██║   ██║
+  ██████╔╝██║  ██╗██║███████╗ ███████╗ ██████╔╝██║   ██║
+  ╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝ ╚══════╝ ╚═════╝ ╚═╝   ╚═╝"""
 
 DRILLBIT_CSS = """
 Screen {
     background: transparent;
 }
 
-Screen > * {
-    background: transparent;
-}
-
-#header-container {
+#header {
     height: auto;
     align: center middle;
-    padding: 0;
-    background: transparent;
-}
-
-#app-title {
-    text-align: center;
-    height: auto;
     padding: 1 0 0 0;
     background: transparent;
 }
 
-#search-container {
-    height: auto;
-    align: center middle;
-    padding: 1 4;
+#ascii-art {
+    text-align: center;
     background: transparent;
+    padding: 0 2;
+}
+
+/* ── Search view ────────────────────────────────────── */
+
+#search-view {
+    height: 1fr;
+    align: center middle;
+    background: transparent;
+}
+
+#search-view.hidden {
+    display: none;
 }
 
 #search-label {
@@ -78,12 +84,17 @@ Screen > * {
     width: 70%;
     padding: 0 2;
     background: transparent;
+    border: solid $panel;
+}
+
+#search-input:focus {
+    border: solid white 60%;
 }
 
 #status-bar {
     height: auto;
     text-align: center;
-    padding: 0 4;
+    padding: 1 4;
     background: transparent;
 }
 
@@ -105,21 +116,29 @@ Screen > * {
     display: block;
 }
 
-#results-area {
+/* ── Results view ───────────────────────────────────── */
+
+#results-view {
+    display: none;
     height: 1fr;
     background: transparent;
+}
+
+#results-view.visible {
+    display: block;
 }
 
 #results-container {
     height: 1fr;
-    padding: 1 4 1 4;
+    padding: 0 2 1 2;
     background: transparent;
 }
 
-#results-title {
+#results-header {
     height: auto;
     padding: 0 0 1 0;
     background: transparent;
+    color: green;
 }
 
 #results-table {
@@ -162,6 +181,7 @@ class DrillbitApp(App):
     """Drillbit: AI-powered Fedora package discovery TUI."""
 
     CSS = DRILLBIT_CSS
+    THEME = "textual-ansi"
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", show=True),
@@ -175,19 +195,21 @@ class DrillbitApp(App):
     status_message: reactive[str] = reactive("")
     status_type: reactive[str] = reactive("info")
     columns_open: reactive[bool] = reactive(False)
+    showing_results: reactive[bool] = reactive(False)
 
     def __init__(self) -> None:
         super().__init__()
         self._last_results: list[dict] = []
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="header-container"):
-            yield Static(APP_TITLE, id="app-title")
+        with Vertical(id="header"):
+            yield Static(DRILLBIT_ASCII, id="ascii-art")
 
-        with Vertical(id="search-container"):
-            yield Label(
-                "What do you need? Describe it in plain English:", id="search-label"
-            )
+        with Vertical(id="search-view"):
+            with Center():
+                yield Label(
+                    "What do you need? Describe it in plain English:", id="search-label"
+                )
             with Center():
                 yield Input(
                     placeholder='e.g. "a tool for editing video files" or "screen recorder"',
@@ -196,13 +218,12 @@ class DrillbitApp(App):
             yield Static("", id="status-bar")
             yield LoadingIndicator(id="loading")
 
-        with Horizontal(id="results-area"):
+        with Horizontal(id="results-view"):
             with Vertical(id="results-container"):
-                yield Static("[ Results ]  (c: toggle columns)", id="results-title")
+                yield Static("", id="results-header")
                 yield DataTable(
                     id="results-table", zebra_stripes=False, cursor_type="row"
                 )
-
             with Vertical(id="column-picker"):
                 yield Static("Columns", id="column-picker-title")
                 yield SelectionList(
@@ -218,6 +239,20 @@ class DrillbitApp(App):
     def on_mount(self) -> None:
         self._rebuild_columns()
         self.query_one("#search-input", Input).focus()
+
+    # ── view switching ─────────────────────────────────────────────────────
+
+    def _show_search_view(self) -> None:
+        self.showing_results = False
+        self.query_one("#search-view").remove_class("hidden")
+        self.query_one("#results-view").remove_class("visible")
+        self.query_one("#search-input", Input).focus()
+
+    def _show_results_view(self) -> None:
+        self.showing_results = True
+        self.query_one("#search-view").add_class("hidden")
+        self.query_one("#results-view").add_class("visible")
+        self.query_one("#results-table", DataTable).focus()
 
     # ── column picker ──────────────────────────────────────────────────────
 
@@ -282,11 +317,13 @@ class DrillbitApp(App):
             picker.remove_class("visible")
 
     def action_toggle_columns(self) -> None:
+        if not self.showing_results:
+            return
         self.columns_open = not self.columns_open
         if self.columns_open:
             self.query_one("#column-list", SelectionList).focus()
         else:
-            self.query_one("#search-input", Input).focus()
+            self.query_one("#results-table", DataTable).focus()
 
     # ── loading / status ───────────────────────────────────────────────────
 
@@ -369,32 +406,38 @@ class DrillbitApp(App):
         self._last_results = packages
         self._rebuild_columns()
         count = len(packages)
-        self._set_status(
-            f"Found {count} package{'s' if count != 1 else ''} — arrow keys to browse, c to pick columns",
-            "success",
+        header = self.query_one("#results-header", Static)
+        header.update(
+            f'Found {count} package{"s" if count != 1 else ""} for "{query}"'
+            "  —  c: columns  |  ctrl+l: new search"
         )
+        self._show_results_view()
 
     # ── misc actions ───────────────────────────────────────────────────────
 
     def action_clear_results(self) -> None:
         self._last_results = []
-        table = self.query_one("#results-table", DataTable)
-        table.clear()
-        search = self.query_one("#search-input", Input)
-        search.clear()
+        self.query_one("#results-table", DataTable).clear()
+        self.query_one("#results-header", Static).update("")
+        self.query_one("#search-input", Input).clear()
         self._set_status("", "info")
         self.columns_open = False
-        search.focus()
+        self._show_search_view()
 
     def action_escape_pressed(self) -> None:
         if self.columns_open:
             self.columns_open = False
-            self.query_one("#search-input", Input).focus()
+            self.query_one("#results-table", DataTable).focus()
+        elif self.showing_results:
+            self.action_clear_results()
         else:
             self.query_one("#search-input", Input).blur()
 
     def action_focus_search(self) -> None:
-        self.query_one("#search-input", Input).focus()
+        if self.showing_results:
+            self.action_clear_results()
+        else:
+            self.query_one("#search-input", Input).focus()
 
 
 if __name__ == "__main__":
