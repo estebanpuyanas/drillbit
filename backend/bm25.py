@@ -64,7 +64,7 @@ class BM25Index:
                 docs = resp.get("documents") or []
                 metas = resp.get("metadatas") or []
 
-                if not ids:
+                if not isinstance(ids, list) or not ids:
                     break
 
                 for doc_id, doc, meta in zip(ids, docs, metas):

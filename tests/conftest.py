@@ -9,7 +9,7 @@ system packages.
 
 import os
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -48,8 +48,10 @@ sys.modules["sentence_transformers"] = mock_sentence_transformers
 # OpenAI client would try to connect to ramalama:8080.
 
 llm_mock = MagicMock()
+llm_mock.chat.completions.create = AsyncMock()
 mock_openai = MagicMock()
 mock_openai.OpenAI.return_value = llm_mock
+mock_openai.AsyncOpenAI.return_value = llm_mock
 sys.modules["openai"] = mock_openai
 
 # ── fastmcp ───────────────────────────────────────────────────────────────────
