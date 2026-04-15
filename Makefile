@@ -1,4 +1,4 @@
-.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since test
+.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since tests
 
 help:
 	@echo "Usage: make [target]"
@@ -8,7 +8,7 @@ help:
 	@echo "  clean        - Remove all Podman containers and images"
 	@echo "  down         - Stop the Podman containers"
 	@echo "  logs         - Write the live container logs into a file named 'logs.txt'"
-	@echo "  test         - Run the test suite (no containers required)"
+	@echo "  tests         - Run the test suite (no containers required)"
 	@echo "  ingest       - Ingest package metadata into ChromaDB (first-time setup only)"
 	@echo "  ingest-dry   - Preview what ingest would index without writing to ChromaDB"
 	@echo "  ingest-since - Re-index packages updated since a date: make ingest-since SINCE=2024-01-01"
@@ -45,5 +45,5 @@ ingest-since:
 	@[ "$(SINCE)" ] || (echo "Usage: make ingest-since SINCE=2024-01-01" && exit 1)
 	podman exec -it drillbit-test_backend_1 python ingest.py --since $(SINCE)
 
-test:
+tests:
 	pytest tests/ -v

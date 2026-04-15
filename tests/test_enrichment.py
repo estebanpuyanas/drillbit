@@ -5,15 +5,22 @@ Verifies that partial or total COPR API failures never drop candidates
 from the result, enrichment is best-effort.
 """
 
+import asyncio
+
 import httpx
 import respx
 
 from main import enrich_candidates
 
+
+def run_enrich(candidates):
+    """Synchronous wrapper so @respx.mock sync tests can call the async function."""
+    return asyncio.run(enrich_candidates(candidates))
+
 COPR_PROJECT = "https://copr.fedorainfracloud.org/api_3/project"
 COPR_BUILDS = "https://copr.fedorainfracloud.org/api_3/build/list"
 
-_CANDIDATES = [
+CANDIDATES = [
     {"name": "kdenlive", "summary": "Video editor", "copr_project": "user/videotools"},
     {
         "name": "blender",
@@ -22,13 +29,13 @@ _CANDIDATES = [
     },
 ]
 
-_PROJECT_RESPONSE = {
+PROJECT_RESPONSE = {
     "homepage": "https://example.com",
     "contact": "dev@example.com",
     "description": "A well-maintained COPR project.",
 }
 
-_BUILD_RESPONSE = {
+BUILD_RESPONSE = {
     "items": [
         {
             "state": "succeeded",
@@ -46,11 +53,11 @@ _BUILD_RESPONSE = {
 @respx.mock
 def test_enrichment_adds_copr_metadata():
     respx.get(COPR_PROJECT).mock(
-        return_value=httpx.Response(200, json=_PROJECT_RESPONSE)
+        return_value=httpx.Response(200, json=PROJECT_RESPONSE)
     )
-    respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json=_BUILD_RESPONSE))
+    respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json=BUILD_RESPONSE))
 
-    result = enrich_candidates(_CANDIDATES[:1])
+    result = run_enrich(CANDIDATES[:1])
 
     assert result[0]["homepage"] == "https://example.com"
     assert result[0]["contact"] == "dev@example.com"
@@ -62,11 +69,11 @@ def test_enrichment_adds_copr_metadata():
 @respx.mock
 def test_enrichment_preserves_original_fields():
     respx.get(COPR_PROJECT).mock(
-        return_value=httpx.Response(200, json=_PROJECT_RESPONSE)
+        return_value=httpx.Response(200, json=PROJECT_RESPONSE)
     )
-    respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json=_BUILD_RESPONSE))
+    respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json=BUILD_RESPONSE))
 
-    result = enrich_candidates(_CANDIDATES[:1])
+    result = run_enrich(CANDIDATES[:1])
 
     assert result[0]["name"] == "kdenlive"
     assert result[0]["summary"] == "Video editor"
@@ -81,7 +88,7 @@ def test_enrichment_survives_project_404():
     respx.get(COPR_PROJECT).mock(return_value=httpx.Response(404))
     respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json={"items": []}))
 
-    result = enrich_candidates(_CANDIDATES[:1])
+    result = run_enrich(CANDIDATES[:1])
 
     assert len(result) == 1
     assert result[0]["name"] == "kdenlive"
@@ -90,11 +97,11 @@ def test_enrichment_survives_project_404():
 @respx.mock
 def test_enrichment_survives_build_404():
     respx.get(COPR_PROJECT).mock(
-        return_value=httpx.Response(200, json=_PROJECT_RESPONSE)
+        return_value=httpx.Response(200, json=PROJECT_RESPONSE)
     )
     respx.get(COPR_BUILDS).mock(return_value=httpx.Response(404))
 
-    result = enrich_candidates(_CANDIDATES[:1])
+    result = run_enrich(CANDIDATES[:1])
 
     assert len(result) == 1
     assert result[0]["homepage"] == "https://example.com"  # project stats still applied
@@ -108,7 +115,7 @@ def test_enrichment_survives_network_error():
     respx.get(COPR_PROJECT).mock(side_effect=httpx.ConnectError("refused"))
     respx.get(COPR_BUILDS).mock(side_effect=httpx.ConnectError("refused"))
 
-    result = enrich_candidates(_CANDIDATES[:1])
+    result = run_enrich(CANDIDATES[:1])
 
     assert len(result) == 1
     assert result[0]["name"] == "kdenlive"
@@ -139,7 +146,7 @@ def test_enrichment_continues_after_first_candidate_fails():
     respx.get(COPR_PROJECT).mock(side_effect=project_side_effect)
     respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json={"items": []}))
 
-    result = enrich_candidates(_CANDIDATES)
+    result = run_enrich(CANDIDATES)
 
     assert len(result) == 2
     # First candidate was not enriched but is still present
@@ -156,14 +163,14 @@ def test_enrichment_continues_after_first_candidate_fails():
 def test_enrichment_skips_candidates_without_copr_project():
     """No HTTP calls should be made for candidates with no copr_project."""
     respx.get(COPR_PROJECT).mock(
-        return_value=httpx.Response(200, json=_PROJECT_RESPONSE)
+        return_value=httpx.Response(200, json=PROJECT_RESPONSE)
     )
     respx.get(COPR_BUILDS).mock(return_value=httpx.Response(200, json={"items": []}))
 
     candidates = [
         {"name": "local-pkg", "summary": "No COPR project", "copr_project": ""}
     ]
-    result = enrich_candidates(candidates)
+    result = run_enrich(candidates)
 
     assert len(result) == 1
     assert result[0]["name"] == "local-pkg"

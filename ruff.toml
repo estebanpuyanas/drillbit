@@ -1,0 +1,32 @@
+line-length = 88
+target-version = "py312"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade enforces native generics (list vs List, X | Y vs Optional, etc.)
+    "RUF", # ruff-specific rules catches common Python mistakes
+    "TCH", # flake8-type-checking moves type-only imports under TYPE_CHECKING
+]
+ignore = [
+    "E501",   # line too long handled by formatter
+    "TCH001", # first-party type imports overly strict for a small codebase
+    "TCH002", # third-party type imports overly strict for a small codebase
+]
+
+# UP006: use `list` instead of `typing.List`
+# UP007: use `X | Y` instead of `typing.Union[X, Y]`
+# UP035: deprecated typing imports (List, Dict, Optional, Tuple, etc.)
+# These are all covered by selecting "UP" above.
+
+[lint.isort]
+known-first-party = ["backend", "mcp_server"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
