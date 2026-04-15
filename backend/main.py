@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from sentence_transformers import SentenceTransformer
 from prompt import SYSTEM_PROMPT
 from chroma import collection
+from bm25 import bm25_search, reciprocal_rank_fusion
 
 app = FastAPI()
 llm = AsyncOpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
@@ -119,7 +120,7 @@ async def search(q: str, limit: int = 5):
         embedding = raw_embedding.tolist()
         n = min(limit * 3, collection.count())
         results = collection.query(query_embeddings=[embedding], n_results=n)
-        candidates = [
+        vector_candidates = [
             {
                 "name": results["metadatas"][0][i].get("name", results["ids"][0][i]),
                 "summary": results["metadatas"][0][i].get(
@@ -130,6 +131,17 @@ async def search(q: str, limit: int = 5):
             }
             for i in range(len(results["ids"][0]))
         ]
+
+        # BM25 search over package names (lazy index build on first call)
+        bm25_candidates = bm25_search(q, k=n)
+
+        # Reciprocal Rank Fusion between vector and BM25 rankings
+        candidates = reciprocal_rank_fusion(
+            vector_candidates=vector_candidates,
+            bm25_candidates=bm25_candidates,
+            limit=n,
+            k=60,
+        )
 
     # Step 2: Enrich candidates with live COPR metadata via MCP tools
     if candidates:
