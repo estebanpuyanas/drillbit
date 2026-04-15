@@ -1,4 +1,4 @@
-.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since tests
+.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since tests tui
 
 help:
 	@echo "Usage: make [target]"
@@ -12,6 +12,7 @@ help:
 	@echo "  ingest       - Ingest package metadata into ChromaDB (first-time setup only)"
 	@echo "  ingest-dry   - Preview what ingest would index without writing to ChromaDB"
 	@echo "  ingest-since - Re-index packages updated since a date: make ingest-since SINCE=2024-01-01"
+	@echo "  tui          - Run the Text User Interface for interactive querying"
 
 containers:
 	@echo "Building and starting Podman containers..."
@@ -47,3 +48,6 @@ ingest-since:
 
 tests:
 	pytest tests/ -v
+
+tui:
+	make containers && python3 tui.py
