@@ -12,6 +12,7 @@ import time
 import httpx
 from sentence_transformers import SentenceTransformer
 from chroma import collection
+import hashlib
 
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
 BATCH_SIZE = 64  # embeddings batch size
@@ -20,6 +21,12 @@ PKG_PAGE_SIZE = 100
 MAX_PROJECTS = None  # set to None to index everything
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+def package_hash(package: dict) -> str:
+    """Generate a SHA256 hash for a package based on its name, summary, and description."""
+    raw = f"{package.get('name', '')}:{package.get('summary', '')}:{package.get('description', '')}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def copr_get(client: httpx.Client, path: str, params: dict) -> dict:
@@ -82,17 +89,36 @@ def iter_packages(client: httpx.Client, ownername: str, projectname: str):
         offset += PKG_PAGE_SIZE
 
 
-def flush_batch(ids, texts, metadatas):
-    embeddings = model.encode(texts, show_progress_bar=False).tolist()
+def flush_batch(ids, texts, metadatas, hashes):
+    """Upsert a batch of documents, skipping unchanged ones based on content hash."""
+    existing = collection.get(ids=ids, include=["metadatas"])
+    existing_hashes = {
+        doc_id: meta.get("content_hash")
+        for doc_id, meta in zip(existing["ids"], existing["metadatas"])
+    }
+
+    new_ids, new_texts, new_metas = [], [], []
+    for uid, text, meta, h in zip(ids, texts, metadatas, hashes):
+        if existing_hashes.get(uid) != h:
+            meta["content_hash"] = h
+            new_ids.append(uid)
+            new_texts.append(text)
+            new_metas.append(meta)
+
+    if not new_ids:
+        return  # entire batch unchanged, skip embedding call
+
+    embedder = model
+    embeddings = embedder.encode(new_texts).tolist()
     collection.upsert(
-        ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas
+        ids=new_ids, embeddings=embeddings, documents=new_texts, metadatas=new_metas
     )
 
 
 def main():
     total_pkgs = 0
     total_projects = 0
-    ids, texts, metadatas = [], [], []
+    ids, texts, metadatas, hashes = [], [], [], []
 
     with httpx.Client() as client:
         for project in iter_projects(client):
@@ -131,11 +157,12 @@ def main():
                             "projectname": name,
                         }
                     )
+                    hashes.append(package_hash(pkg))
 
                     if len(ids) >= BATCH_SIZE:
-                        flush_batch(ids, texts, metadatas)
+                        flush_batch(ids, texts, metadatas, hashes)
                         total_pkgs += len(ids)
-                        ids, texts, metadatas = [], [], []
+                        ids, texts, metadatas, hashes = [], [], [], []
 
             except Exception as e:
                 print(f"  skipping {owner}/{name}: {e}", file=sys.stderr)
@@ -143,7 +170,7 @@ def main():
 
     # flush remainder
     if ids:
-        flush_batch(ids, texts, metadatas)
+        flush_batch(ids, texts, metadatas, hashes)
         total_pkgs += len(ids)
 
     print(f"\nDone. Indexed {total_pkgs} packages from {total_projects} projects.")
