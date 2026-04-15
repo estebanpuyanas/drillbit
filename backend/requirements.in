@@ -8,3 +8,4 @@ openai
 httpx
 torch
 fastmcp
+rank_bm25
