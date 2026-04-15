@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import re
 import asyncio
@@ -16,7 +17,29 @@ embedder = SentenceTransformer("all-MiniLM-L6-v2")
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
 
 
-def _truncate(text: str, max_chars: int) -> str:
+@dataclasses.dataclass
+class PackageResult:
+    """A single search result returned by /search.
+
+    Using a dataclass here makes the response schema explicit and eliminates
+    the repeated candidate_map.get(name, {}).get(field, "") chains.
+    """
+
+    name: str
+    summary: str = ""
+    copr_project: str = ""
+    score: float = 0.0
+    version: str = ""
+    homepage: str = ""
+    contact: str = ""
+    copr_description: str = ""
+    build_state: str = ""
+    submitted_on: int | None = None
+    ended_on: int | None = None
+    reason: str = ""
+
+
+def truncate(text: str, max_chars: int) -> str:
     """Truncate text to max_chars, ending at the last complete sentence."""
     if len(text) <= max_chars:
         return text
@@ -41,7 +64,7 @@ async def fetch_copr_project_stats(owner: str, project: str) -> dict:
             return {
                 "homepage": data.get("homepage", ""),
                 "contact": data.get("contact", ""),
-                "description": _truncate(data.get("description") or "", 300),
+                "description": truncate(data.get("description") or "", 300),
             }
     except Exception:
         return {}
@@ -78,7 +101,7 @@ async def fetch_latest_build(owner: str, project: str, package: str) -> dict:
         return {}
 
 
-async def _enrich_one(c: dict) -> dict:
+async def enrich_one(c: dict) -> dict:
     """Fetch COPR stats and latest build for a single candidate concurrently."""
     copr_project = c.get("copr_project", "")
     if copr_project and "/" in copr_project:
@@ -93,7 +116,7 @@ async def _enrich_one(c: dict) -> dict:
 
 async def enrich_candidates(candidates: list) -> list:
     """Fetch live COPR stats and build info for all candidates in parallel."""
-    return list(await asyncio.gather(*(_enrich_one(c) for c in candidates)))
+    return list(await asyncio.gather(*(enrich_one(c) for c in candidates)))
 
 
 @app.get("/health")
@@ -178,34 +201,31 @@ async def search(q: str, limit: int = 5):
                 ranked = json.loads(match.group())
                 # Merge LLM ranking with candidate metadata
                 candidate_map = {c["name"]: c for c in candidates}
-                return [
-                    {
-                        "name": p["name"],
-                        "version": candidate_map.get(p["name"], {}).get("version", ""),
-                        "summary": candidate_map.get(p["name"], {}).get("summary", ""),
-                        "copr_project": candidate_map.get(p["name"], {}).get(
-                            "copr_project", ""
-                        ),
-                        "copr_description": candidate_map.get(p["name"], {}).get(
-                            "description", ""
-                        ),
-                        "homepage": candidate_map.get(p["name"], {}).get(
-                            "homepage", ""
-                        ),
-                        "contact": candidate_map.get(p["name"], {}).get("contact", ""),
-                        "build_state": candidate_map.get(p["name"], {}).get(
-                            "build_state", ""
-                        ),
-                        "submitted_on": candidate_map.get(p["name"], {}).get(
-                            "submitted_on"
-                        ),
-                        "ended_on": candidate_map.get(p["name"], {}).get("ended_on"),
-                        "reason": p.get("reason", ""),
-                        "score": candidate_map.get(p["name"], {}).get("score", 0.0),
-                    }
-                    for p in ranked[:limit]
-                    if p.get("name")
-                ]
+                results = []
+                for p in ranked[:limit]:
+                    name = p.get("name")
+                    if not name:
+                        continue
+                    base = candidate_map.get(name, {})
+                    results.append(
+                        dataclasses.asdict(
+                            PackageResult(
+                                name=name,
+                                version=base.get("version", ""),
+                                summary=base.get("summary", ""),
+                                copr_project=base.get("copr_project", ""),
+                                copr_description=base.get("description", ""),
+                                homepage=base.get("homepage", ""),
+                                contact=base.get("contact", ""),
+                                build_state=base.get("build_state", ""),
+                                submitted_on=base.get("submitted_on"),
+                                ended_on=base.get("ended_on"),
+                                reason=p.get("reason", ""),
+                                score=base.get("score", 0.0),
+                            )
+                        )
+                    )
+                return results
         except Exception:
             pass
         # LLM failed — return raw vector results

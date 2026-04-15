@@ -50,17 +50,17 @@ class DrillbitSearchProvider(dbus.service.Object):
     def __init__(self, conn):
         super().__init__(conn, OBJECT_PATH)
         # Map package name → package dict, populated on each search.
-        self._cache: dict[str, dict] = {}
+        self.cache: dict[str, dict] = {}
         # Debounce state — all touched only from the GLib main thread.
-        self._pending_timer_id: int | None = None
-        self._pending_query: str | None = None
-        self._pending_return_cb = None
+        self.pending_timer_id: int | None = None
+        self.pending_query: str | None = None
+        self.pending_return_cb = None
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _extract_quoted_query(self, terms) -> str | None:
+    def extract_quoted_query(self, terms) -> str | None:
         """
         Return the query string if terms form a complete quoted phrase
         (first token starts with '"', last token ends with '"'), else None.
@@ -76,48 +76,48 @@ class DrillbitSearchProvider(dbus.service.Object):
             return joined[1:-1].strip()
         return None
 
-    def _cancel_pending(self):
+    def cancel_pending(self):
         """Cancel any in-flight debounce timer and resolve its callback with []."""
-        if self._pending_timer_id is not None:
-            GLib.source_remove(self._pending_timer_id)
-            self._pending_timer_id = None
-        if self._pending_return_cb is not None:
+        if self.pending_timer_id is not None:
+            GLib.source_remove(self.pending_timer_id)
+            self.pending_timer_id = None
+        if self.pending_return_cb is not None:
             try:
-                self._pending_return_cb([])
+                self.pending_return_cb([])
             except Exception:
                 pass
-            self._pending_return_cb = None
-        self._pending_query = None
+            self.pending_return_cb = None
+        self.pending_query = None
 
-    def _schedule_search(self, query: str, return_cb):
+    def schedule_search(self, query: str, return_cb):
         """Cancel any pending search and schedule a new one after DEBOUNCE_MS."""
-        self._cancel_pending()
-        self._pending_query = query
-        self._pending_return_cb = return_cb
-        self._pending_timer_id = GLib.timeout_add(DEBOUNCE_MS, self._on_debounce_fire)
+        self.cancel_pending()
+        self.pending_query = query
+        self.pending_return_cb = return_cb
+        self.pending_timer_id = GLib.timeout_add(DEBOUNCE_MS, self.on_debounce_fire)
         log.info("Debounce armed for %r (%d ms)", query, DEBOUNCE_MS)
 
-    def _on_debounce_fire(self) -> bool:
+    def on_debounce_fire(self) -> bool:
         """GLib timer callback — clear state and dispatch to worker thread."""
-        self._pending_timer_id = None
-        query = self._pending_query
-        return_cb = self._pending_return_cb
-        self._pending_query = None
-        self._pending_return_cb = None
+        self.pending_timer_id = None
+        query = self.pending_query
+        return_cb = self.pending_return_cb
+        self.pending_query = None
+        self.pending_return_cb = None
         log.info("Debounce fired, querying backend for %r", query)
         threading.Thread(
-            target=self._search_thread,
+            target=self.search_thread,
             args=(query, return_cb),
             daemon=True,
         ).start()
         return GLib.SOURCE_REMOVE
 
-    def _search_thread(self, query: str, return_cb):
+    def search_thread(self, query: str, return_cb):
         """Worker thread: call backend, then hand result back to main loop."""
-        ids = self._query_backend(query)
+        ids = self.query_backend(query)
         GLib.idle_add(return_cb, ids)
 
-    def _query_backend(self, query: str) -> list[str]:
+    def query_backend(self, query: str) -> list[str]:
         """Call the FastAPI backend and return a list of result IDs."""
         try:
             resp = httpx.get(
@@ -130,7 +130,7 @@ class DrillbitSearchProvider(dbus.service.Object):
             ids: list[str] = []
             for pkg in packages:
                 pkg_id = pkg["name"]
-                self._cache[pkg_id] = pkg
+                self.cache[pkg_id] = pkg
                 ids.append(pkg_id)
             log.info("Search %r → %d results", query, len(ids))
             return ids
@@ -146,36 +146,36 @@ class DrillbitSearchProvider(dbus.service.Object):
         IFACE,
         in_signature="as",
         out_signature="as",
-        async_callbacks=("_return_cb", "_error_cb"),
+        async_callbacks=("return_cb", "error_cb"),
     )
-    def GetInitialResultSet(self, terms, _return_cb, _error_cb):
-        query = self._extract_quoted_query(terms)
+    def GetInitialResultSet(self, terms, return_cb, error_cb):
+        query = self.extract_quoted_query(terms)
         if query is None:
-            self._cancel_pending()
-            _return_cb([])
+            self.cancel_pending()
+            return_cb([])
             return
-        self._schedule_search(query, _return_cb)
+        self.schedule_search(query, return_cb)
 
     @dbus.service.method(
         IFACE,
         in_signature="asas",
         out_signature="as",
-        async_callbacks=("_return_cb", "_error_cb"),
+        async_callbacks=("return_cb", "error_cb"),
     )
-    def GetSubsearchResultSet(self, previous_results, terms, _return_cb, _error_cb):
-        query = self._extract_quoted_query(terms)
+    def GetSubsearchResultSet(self, previous_results, terms, return_cb, error_cb):
+        query = self.extract_quoted_query(terms)
         if query is None:
-            self._cancel_pending()
-            _return_cb([])
+            self.cancel_pending()
+            return_cb([])
             return
-        self._schedule_search(query, _return_cb)
+        self.schedule_search(query, return_cb)
 
     @dbus.service.method(IFACE, in_signature="as", out_signature="aa{sv}")
     def GetResultMetas(self, identifiers):
         metas = []
         for pkg_id in identifiers:
             pkg_id = str(pkg_id)
-            pkg = self._cache.get(pkg_id, {})
+            pkg = self.cache.get(pkg_id, {})
             metas.append(
                 {
                     "id": dbus.String(pkg_id),
@@ -191,7 +191,7 @@ class DrillbitSearchProvider(dbus.service.Object):
     def ActivateResult(self, identifier, terms, timestamp):
         """User clicked a result — open a terminal and run dnf install."""
         pkg_id = str(identifier)
-        name = self._cache.get(pkg_id, {}).get("name", pkg_id)
+        name = self.cache.get(pkg_id, {}).get("name", pkg_id)
         log.info("ActivateResult: %s", name)
         try:
             subprocess.Popen(
@@ -223,8 +223,8 @@ class DrillbitSearchProvider(dbus.service.Object):
 def main():
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     session_bus = dbus.SessionBus()
-    _name = dbus.service.BusName(BUS_NAME, session_bus)
-    _provider = DrillbitSearchProvider(session_bus)
+    bus_name = dbus.service.BusName(BUS_NAME, session_bus)
+    provider = DrillbitSearchProvider(session_bus)
     log.info("Drillbit search provider running on %s", BUS_NAME)
     GLib.MainLoop().run()
 

@@ -16,18 +16,18 @@ import respx
 # conftest.py has already patched sys.modules["fastmcp"] with a passthrough
 # tool decorator, so @mcp.tool() leaves the functions callable.
 
-_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_spec = importlib.util.spec_from_file_location(
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+mcp_spec = importlib.util.spec_from_file_location(
     "mcp_main",
-    os.path.join(_repo, "mcp-server", "main.py"),
+    os.path.join(repo_root, "mcp-server", "main.py"),
 )
-_mcp = importlib.util.module_from_spec(_spec)
-sys.modules["mcp_main"] = _mcp
-_spec.loader.exec_module(_mcp)
+mcp_module = importlib.util.module_from_spec(mcp_spec)
+sys.modules["mcp_main"] = mcp_module
+mcp_spec.loader.exec_module(mcp_module)
 
-get_package_info = _mcp.get_package_info
-get_copr_project_stats = _mcp.get_copr_project_stats
-search_copr_packages = _mcp.search_copr_packages
+get_package_info = mcp_module.get_package_info
+get_copr_project_stats = mcp_module.get_copr_project_stats
+search_copr_packages = mcp_module.search_copr_packages
 
 COPR = "https://copr.fedorainfracloud.org/api_3"
 

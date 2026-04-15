@@ -38,7 +38,7 @@ FALLBACK_FIELDS = {"name", "summary", "copr_project", "reason", "score"}
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _llm_response(content: str):
+def make_llm_response(content: str):
     """Build a minimal mock that looks like openai.ChatCompletion."""
     msg = MagicMock()
     msg.content = content
@@ -49,7 +49,7 @@ def _llm_response(content: str):
     return resp
 
 
-def _chroma_results(names: list[str]) -> dict:
+def make_chroma_results(names: list[str]) -> dict:
     """Build a minimal ChromaDB query result dict for a list of package names."""
     return {
         "ids": [names],
@@ -78,8 +78,8 @@ def test_health_ok():
 
 def test_search_returns_required_schema(chroma_collection, llm_client):
     chroma_collection.count.return_value = 3
-    chroma_collection.query.return_value = _chroma_results(["pkg-a", "pkg-b", "pkg-c"])
-    llm_client.chat.completions.create.return_value = _llm_response(
+    chroma_collection.query.return_value = make_chroma_results(["pkg-a", "pkg-b", "pkg-c"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
         '[{"name": "pkg-a", "reason": "Best match for your query"}]'
     )
 
@@ -98,9 +98,9 @@ def test_search_returns_required_schema(chroma_collection, llm_client):
 def test_search_respects_limit(chroma_collection, llm_client):
     names = [f"pkg-{i}" for i in range(9)]
     chroma_collection.count.return_value = 9
-    chroma_collection.query.return_value = _chroma_results(names)
+    chroma_collection.query.return_value = make_chroma_results(names)
     ranked = [{"name": n, "reason": "ok"} for n in names[:3]]
-    llm_client.chat.completions.create.return_value = _llm_response(json.dumps(ranked))
+    llm_client.chat.completions.create.return_value = make_llm_response(json.dumps(ranked))
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
         r = client.get("/search", params={"q": "editor", "limit": 3})
@@ -111,8 +111,8 @@ def test_search_respects_limit(chroma_collection, llm_client):
 
 def test_search_score_is_numeric(chroma_collection, llm_client):
     chroma_collection.count.return_value = 1
-    chroma_collection.query.return_value = _chroma_results(["mypkg"])
-    llm_client.chat.completions.create.return_value = _llm_response(
+    chroma_collection.query.return_value = make_chroma_results(["mypkg"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
         '[{"name": "mypkg", "reason": "it works"}]'
     )
 
@@ -129,7 +129,7 @@ def test_search_score_is_numeric(chroma_collection, llm_client):
 
 def test_search_fallback_when_chroma_empty(chroma_collection, llm_client):
     chroma_collection.count.return_value = 0
-    llm_client.chat.completions.create.return_value = _llm_response(
+    llm_client.chat.completions.create.return_value = make_llm_response(
         '[{"name": "kdenlive", "summary": "Non-linear video editor"}]'
     )
 
@@ -163,8 +163,8 @@ def test_search_returns_raw_results_when_llm_returns_no_json_array(
 ):
     """LLM responds with prose — no JSON array extractable."""
     chroma_collection.count.return_value = 2
-    chroma_collection.query.return_value = _chroma_results(["pkg-x", "pkg-y"])
-    llm_client.chat.completions.create.return_value = _llm_response(
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
         "I would recommend pkg-x because it is great."
     )
 
@@ -181,8 +181,8 @@ def test_search_returns_raw_results_when_llm_returns_malformed_json(
 ):
     """LLM returns a bracket-wrapped string that isn't valid JSON."""
     chroma_collection.count.return_value = 2
-    chroma_collection.query.return_value = _chroma_results(["pkg-x", "pkg-y"])
-    llm_client.chat.completions.create.return_value = _llm_response("[not valid json]")
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
+    llm_client.chat.completions.create.return_value = make_llm_response("[not valid json]")
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
         r = client.get("/search", params={"q": "something"})
@@ -193,7 +193,7 @@ def test_search_returns_raw_results_when_llm_returns_malformed_json(
 
 def test_search_returns_raw_results_when_llm_raises(chroma_collection, llm_client):
     chroma_collection.count.return_value = 2
-    chroma_collection.query.return_value = _chroma_results(["pkg-x", "pkg-y"])
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
     llm_client.chat.completions.create.side_effect = Exception("timeout")
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):

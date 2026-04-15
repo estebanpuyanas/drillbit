@@ -18,48 +18,48 @@ import pytest
 # by their bare names (same as the container does).  MCP and search-provider
 # modules are loaded via importlib in their respective test files.
 
-_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(_repo, "backend"))
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(repo_root, "backend"))
 
 # ── chromadb ──────────────────────────────────────────────────────────────────
 # PersistentClient would try to create /app/chroma_data on disk.
 
-_chroma_collection = MagicMock()
-_chroma_client = MagicMock()
-_chroma_client.get_or_create_collection.return_value = _chroma_collection
-_mock_chromadb = MagicMock()
-_mock_chromadb.PersistentClient.return_value = _chroma_client
-sys.modules["chromadb"] = _mock_chromadb
+chroma_collection_mock = MagicMock()
+chroma_client_mock = MagicMock()
+chroma_client_mock.get_or_create_collection.return_value = chroma_collection_mock
+mock_chromadb = MagicMock()
+mock_chromadb.PersistentClient.return_value = chroma_client_mock
+sys.modules["chromadb"] = mock_chromadb
 
 # ── sentence_transformers ─────────────────────────────────────────────────────
 # SentenceTransformer would download a ~90 MB model at import time.
 # encode() returns an object with .tolist() matching the numpy array that the
 # real SentenceTransformer returns and that main.py calls .tolist() on.
 
-_embedding_result = MagicMock()
-_embedding_result.tolist.return_value = [0.1] * 384
-_embedder = MagicMock()
-_embedder.encode.return_value = _embedding_result
-_mock_st = MagicMock()
-_mock_st.SentenceTransformer.return_value = _embedder
-sys.modules["sentence_transformers"] = _mock_st
+embedding_result = MagicMock()
+embedding_result.tolist.return_value = [0.1] * 384
+embedder_mock = MagicMock()
+embedder_mock.encode.return_value = embedding_result
+mock_sentence_transformers = MagicMock()
+mock_sentence_transformers.SentenceTransformer.return_value = embedder_mock
+sys.modules["sentence_transformers"] = mock_sentence_transformers
 
 # ── openai ────────────────────────────────────────────────────────────────────
 # OpenAI client would try to connect to ramalama:8080.
 
-_llm = MagicMock()
-_mock_openai = MagicMock()
-_mock_openai.OpenAI.return_value = _llm
-sys.modules["openai"] = _mock_openai
+llm_mock = MagicMock()
+mock_openai = MagicMock()
+mock_openai.OpenAI.return_value = llm_mock
+sys.modules["openai"] = mock_openai
 
 # ── fastmcp ───────────────────────────────────────────────────────────────────
 # Use a passthrough decorator so @mcp.tool() leaves the functions callable.
 
-_mcp_instance = MagicMock()
-_mcp_instance.tool.return_value = lambda f: f
-_mock_fastmcp = MagicMock()
-_mock_fastmcp.FastMCP.return_value = _mcp_instance
-sys.modules["fastmcp"] = _mock_fastmcp
+mcp_instance = MagicMock()
+mcp_instance.tool.return_value = lambda f: f
+mock_fastmcp = MagicMock()
+mock_fastmcp.FastMCP.return_value = mcp_instance
+sys.modules["fastmcp"] = mock_fastmcp
 
 
 # ── dbus / gi ─────────────────────────────────────────────────────────────────
@@ -67,22 +67,22 @@ sys.modules["fastmcp"] = _mock_fastmcp
 # DrillbitSearchProvider(dbus.service.Object) works at import time.
 
 
-class _DBusObject:
+class DBusObject:
     def __init__(self, *args, **kwargs):
         pass
 
 
-_mock_dbus_service = MagicMock()
-_mock_dbus_service.Object = _DBusObject
+mock_dbus_service = MagicMock()
+mock_dbus_service.Object = DBusObject
 # @dbus.service.method(...) must return a passthrough decorator.
-_mock_dbus_service.method = staticmethod(lambda *a, **kw: lambda f: f)
+mock_dbus_service.method = staticmethod(lambda *a, **kw: lambda f: f)
 
-_mock_dbus = MagicMock()
-_mock_dbus.service = _mock_dbus_service
-_mock_dbus.String = str  # used in GetResultMetas
+mock_dbus = MagicMock()
+mock_dbus.service = mock_dbus_service
+mock_dbus.String = str  # used in GetResultMetas
 
-sys.modules["dbus"] = _mock_dbus
-sys.modules["dbus.service"] = _mock_dbus_service
+sys.modules["dbus"] = mock_dbus
+sys.modules["dbus.service"] = mock_dbus_service
 sys.modules["dbus.mainloop"] = MagicMock()
 sys.modules["dbus.mainloop.glib"] = MagicMock()
 sys.modules["gi"] = MagicMock()
@@ -97,12 +97,12 @@ sys.modules["gi.repository.GLib"] = MagicMock()
 def chroma_collection():
     """The mocked ChromaDB collection. Call-history and return values are
     reset before each test so tests don't bleed into one another."""
-    _chroma_collection.reset_mock()
-    return _chroma_collection
+    chroma_collection_mock.reset_mock()
+    return chroma_collection_mock
 
 
 @pytest.fixture()
 def llm_client():
     """The mocked OpenAI client. Reset before each test."""
-    _llm.reset_mock()
-    return _llm
+    llm_mock.reset_mock()
+    return llm_mock

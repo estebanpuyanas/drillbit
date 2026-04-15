@@ -199,7 +199,7 @@ class DrillbitApp(App):
 
     def __init__(self) -> None:
         super().__init__()
-        self._last_results: list[dict] = []
+        self.last_results: list[dict] = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="header"):
@@ -237,18 +237,18 @@ class DrillbitApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._rebuild_columns()
+        self.rebuild_columns()
         self.query_one("#search-input", Input).focus()
 
     # ── view switching ─────────────────────────────────────────────────────
 
-    def _show_search_view(self) -> None:
+    def show_search_view(self) -> None:
         self.showing_results = False
         self.query_one("#search-view").remove_class("hidden")
         self.query_one("#results-view").remove_class("visible")
         self.query_one("#search-input", Input).focus()
 
-    def _show_results_view(self) -> None:
+    def show_results_view(self) -> None:
         self.showing_results = True
         self.query_one("#search-view").add_class("hidden")
         self.query_one("#results-view").add_class("visible")
@@ -256,30 +256,30 @@ class DrillbitApp(App):
 
     # ── column picker ──────────────────────────────────────────────────────
 
-    def _visible_columns(self) -> list[tuple[str, str]]:
+    def visible_columns(self) -> list[tuple[str, str]]:
         """Return (key, label) for every currently selected column."""
         selected: set[str] = set(self.query_one("#column-list", SelectionList).selected)
         return [(key, label) for key, label, _ in AVAILABLE_COLUMNS if key in selected]
 
-    def _rebuild_columns(self) -> None:
+    def rebuild_columns(self) -> None:
         table = self.query_one("#results-table", DataTable)
         table.clear(columns=True)
-        for _, label in self._visible_columns():
+        for _, label in self.visible_columns():
             table.add_column(label, key=label)
-        if self._last_results:
-            self._fill_rows()
+        if self.last_results:
+            self.fill_rows()
 
-    def _fill_rows(self) -> None:
+    def fill_rows(self) -> None:
         table = self.query_one("#results-table", DataTable)
         table.clear()
-        visible = self._visible_columns()
-        for i, pkg in enumerate(self._last_results, 1):
+        visible = self.visible_columns()
+        for i, pkg in enumerate(self.last_results, 1):
             row: list = []
             for key, _ in visible:
-                row.append(self._render_cell(key, pkg, i))
+                row.append(self.render_cell(key, pkg, i))
             table.add_row(*row)
 
-    def _render_cell(self, key: str, pkg: dict, rank: int) -> str | Text:
+    def render_cell(self, key: str, pkg: dict, rank: int) -> str | Text:
         value = pkg.get(key, "—") or "—"
         if key == "name":
             return Text(str(value), style="bold" if rank == 1 else "")
@@ -307,7 +307,7 @@ class DrillbitApp(App):
 
     @on(SelectionList.SelectedChanged, "#column-list")
     def on_column_selection_changed(self) -> None:
-        self._rebuild_columns()
+        self.rebuild_columns()
 
     def watch_columns_open(self, value: bool) -> None:
         picker = self.query_one("#column-picker")
@@ -353,9 +353,9 @@ class DrillbitApp(App):
 
     @work(exclusive=True, thread=True)
     def run_search(self, query: str) -> None:
-        self.call_from_thread(self._set_loading, True)
+        self.call_from_thread(self.set_loading, True)
         self.call_from_thread(
-            self._set_status, f'Drilling into packages for: "{query}"...', "info"
+            self.set_status, f'Drilling into packages for: "{query}"...', "info"
         )
 
         try:
@@ -367,62 +367,62 @@ class DrillbitApp(App):
                 packages = resp.json()
         except httpx.ConnectError:
             self.call_from_thread(
-                self._set_status,
+                self.set_status,
                 "Cannot reach backend at localhost:8000 — is the stack running? (podman-compose up -d)",
                 "error",
             )
-            self.call_from_thread(self._set_loading, False)
+            self.call_from_thread(self.set_loading, False)
             return
         except httpx.HTTPStatusError as e:
             self.call_from_thread(
-                self._set_status,
+                self.set_status,
                 f"Backend error: {e.response.status_code}",
                 "error",
             )
-            self.call_from_thread(self._set_loading, False)
+            self.call_from_thread(self.set_loading, False)
             return
         except Exception as e:
-            self.call_from_thread(self._set_status, f"Error: {e}", "error")
-            self.call_from_thread(self._set_loading, False)
+            self.call_from_thread(self.set_status, f"Error: {e}", "error")
+            self.call_from_thread(self.set_loading, False)
             return
 
-        self.call_from_thread(self._update_results, packages, query)
-        self.call_from_thread(self._set_loading, False)
+        self.call_from_thread(self.update_results, packages, query)
+        self.call_from_thread(self.set_loading, False)
 
-    def _set_loading(self, value: bool) -> None:
+    def set_loading(self, value: bool) -> None:
         self.is_loading = value
 
-    def _set_status(self, msg: str, kind: str = "info") -> None:
+    def set_status(self, msg: str, kind: str = "info") -> None:
         self.status_message = msg
         self.status_type = kind
 
-    def _update_results(self, packages: list[dict], query: str) -> None:
+    def update_results(self, packages: list[dict], query: str) -> None:
         if not packages:
-            self._set_status(
+            self.set_status(
                 f'No packages found for "{query}". Try a different description.',
                 "error",
             )
             return
-        self._last_results = packages
-        self._rebuild_columns()
+        self.last_results = packages
+        self.rebuild_columns()
         count = len(packages)
         header = self.query_one("#results-header", Static)
         header.update(
             f'Found {count} package{"s" if count != 1 else ""} for "{query}"'
             "  —  c: columns  |  ctrl+l: new search"
         )
-        self._show_results_view()
+        self.show_results_view()
 
     # ── misc actions ───────────────────────────────────────────────────────
 
     def action_clear_results(self) -> None:
-        self._last_results = []
+        self.last_results = []
         self.query_one("#results-table", DataTable).clear()
         self.query_one("#results-header", Static).update("")
         self.query_one("#search-input", Input).clear()
-        self._set_status("", "info")
+        self.set_status("", "info")
         self.columns_open = False
-        self._show_search_view()
+        self.show_search_view()
 
     def action_escape_pressed(self) -> None:
         if self.columns_open:
