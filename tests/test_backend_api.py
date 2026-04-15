@@ -76,9 +76,12 @@ def test_health_ok():
 # ── /search — full pipeline (ChromaDB populated) ──────────────────────────────
 
 
+# This test is triggering a process termination from the Linux kernel.
 def test_search_returns_required_schema(chroma_collection, llm_client):
     chroma_collection.count.return_value = 3
-    chroma_collection.query.return_value = make_chroma_results(["pkg-a", "pkg-b", "pkg-c"])
+    chroma_collection.query.return_value = make_chroma_results(
+        ["pkg-a", "pkg-b", "pkg-c"]
+    )
     llm_client.chat.completions.create.return_value = make_llm_response(
         '[{"name": "pkg-a", "reason": "Best match for your query"}]'
     )
@@ -100,7 +103,9 @@ def test_search_respects_limit(chroma_collection, llm_client):
     chroma_collection.count.return_value = 9
     chroma_collection.query.return_value = make_chroma_results(names)
     ranked = [{"name": n, "reason": "ok"} for n in names[:3]]
-    llm_client.chat.completions.create.return_value = make_llm_response(json.dumps(ranked))
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        json.dumps(ranked)
+    )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
         r = client.get("/search", params={"q": "editor", "limit": 3})
@@ -182,7 +187,9 @@ def test_search_returns_raw_results_when_llm_returns_malformed_json(
     """LLM returns a bracket-wrapped string that isn't valid JSON."""
     chroma_collection.count.return_value = 2
     chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
-    llm_client.chat.completions.create.return_value = make_llm_response("[not valid json]")
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        "[not valid json]"
+    )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
         r = client.get("/search", params={"q": "something"})

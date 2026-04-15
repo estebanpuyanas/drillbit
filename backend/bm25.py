@@ -175,8 +175,7 @@ def reciprocal_rank_fusion(
     target = max(limit, len(vector_candidates))
 
     return [
-        name_to_vec.get(name) or name_to_bm25.get(name)
-        for name in fused_names[:target]
+        name_to_vec.get(name) or name_to_bm25.get(name) for name in fused_names[:target]
     ]
 
 
