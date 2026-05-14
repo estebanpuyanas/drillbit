@@ -155,72 +155,40 @@ pyenv install 3.12      # skip if already installed
 pyenv local 3.12        # creates .python-version at repo root
 ```
 
-### 3. Create and activate a virtual environment
+### 3. Install local dev dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate      # Linux/Mac
-# .venv\Scripts\activate       # Windows
-```
-
-### 4. Install local dev dependencies
-
-```bash
-pip install pip-tools
-pip-sync requirements.txt      # installs TUI + dev deps from root requirements.txt
+uv sync --dev   # creates .venv and installs everything in one step
 ```
 
 ---
 
-## Dependency Management (pip-tools)
+## Dependency Management
 
-This project uses **pip-tools** to manage dependencies. The workflow separates what you *declare* from what gets *installed*.
-
-### How it works
-
-- `requirements.in` — you write your **direct dependencies** here (just the packages you actually import)
-- `requirements.txt` — **generated** by pip-tools with every transitive dep pinned to an exact version. Never edit this by hand.
-
-Each service has its own pair:
+Everything uses **uv**. Local dev is managed via `pyproject.toml` + `uv.lock`. Container services declare deps in `requirements.in` — uv compiles and syncs them inside the container at build time.
 
 ```
-drillbit-test/
-├── requirements.in       ← root: TUI + local dev deps
-├── requirements.txt      ← generated
+drillbit/
+├── pyproject.toml        ← local dev + test deps
+├── uv.lock               ← committed lockfile
 ├── backend/
-│   ├── requirements.in   ← backend direct deps
-│   └── requirements.txt  ← generated, used by Containerfile
+│   └── requirements.in   ← backend direct deps (compiled by uv inside the container)
 └── mcp-server/
-    ├── requirements.in   ← mcp direct deps
-    └── requirements.txt  ← generated, used by Containerfile
+    └── requirements.in   ← mcp direct deps (compiled by uv inside the container)
 ```
 
-### Workflow
-
-**Adding a new dependency:**
+### Adding a local dev/test dependency
 
 ```bash
-# 1. Add it to the relevant requirements.in
-echo "httpx" >> backend/requirements.in
-
-# 2. Recompile to regenerate requirements.txt
-cd backend
-pip-compile requirements.in
-
-# 3. Sync your local venv (for local dev only)
-pip-sync requirements.txt
-
-# 4. Rebuild the container to apply changes
-cd ..
-podman-compose build --no-cache backend
+# Edit pyproject.toml, then:
+uv sync --dev
 ```
 
-**First time setup per service:**
+### Adding a backend or mcp-server container dependency
 
 ```bash
-cd backend
-pip-compile requirements.in   # generates requirements.txt
-pip-sync requirements.txt     # syncs local venv
+echo "new-package" >> backend/requirements.in
+podman-compose build --no-cache backend   # uv compiles inside the container
 ```
 
 ### Important: CPU-only PyTorch

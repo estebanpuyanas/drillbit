@@ -1,0 +1,20 @@
+[project]
+name = "drillbit"
+version = "0.1.0"
+description = "AI-powered package discovery for Fedora"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx",
+    "ramalama",
+    "rich",
+    "textual",
+]
+
+[dependency-groups]
+dev = [
+    "fastapi[standard]",
+    "pytest",
+    "pytest-cov",
+    "rank-bm25",
+    "respx",
+]

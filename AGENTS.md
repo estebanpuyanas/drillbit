@@ -78,35 +78,31 @@ podman-compose logs -f <service>            # tail logs
 podman ps -a                                # list all containers
 ```
 
-### Dependency Management (pip-tools)
+### Dependency Management
 
-Each service has its own `requirements.in` / `requirements.txt`. The root-level files are for the TUI + local dev.
+Everything uses **uv**. Local dev is managed via `pyproject.toml`. Container services declare deps in `requirements.in` — uv compiles and syncs them inside the container at build time, so no local pip-compile step is needed.
 
 ```bash
-# Add a dependency and regenerate lockfile
+# Add a local dev or test dependency
+# Edit pyproject.toml, then:
+uv sync --dev
+
+# Add a backend container dependency
 echo "new-package" >> backend/requirements.in
-cd backend && pip-compile requirements.in
-
-# Sync local venv
-pip-sync requirements.txt
-
-# Then rebuild the container
-podman-compose build --no-cache backend
+podman-compose build --no-cache backend   # uv compiles inside the container
 ```
 
 ### Local Dev Setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install pip-tools
-pip-sync requirements.txt
+uv sync --dev   # creates .venv and installs all deps in one step
 ```
 
 ## Dependency Notes
 
 - **PyTorch** in the backend is forced CPU-only via `--extra-index-url https://download.pytorch.org/whl/cpu` in `backend/requirements.in`. This keeps the backend image ~1.6GB instead of ~8GB. Do not change this to a GPU build without explicit intent.
 - Python version is pinned to **3.12** via `.python-version` (pyenv).
+- `uv.lock` is committed to the repo. `backend/requirements.txt` and `mcp-server/requirements.txt` are generated inside the container — they are gitignored and never need to exist locally.
 
 ## Key Files
 

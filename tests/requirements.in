@@ -1,5 +1,0 @@
-pytest
-respx
-fastapi[standard]
-httpx
-pytest-cov
