@@ -2,29 +2,42 @@ services:
 
   ramalama:
     build:
-      context: ./ramalama 
+      context: ./ramalama
       dockerfile: Containerfile
     ports:
       - "8080:8080"
     volumes:
-      - ramalama_models:/root/.local/share/ramalama 
+      - ramalama_models:/root/.local/share/ramalama
     environment:
       - RAMALAMA_STORE=/root/.local/share/ramalama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/models && echo 'Health check passed' || { echo 'Health check failed'; exit 1; }"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
 
   backend:
     build:
-      context: ./backend 
+      context: ./backend
       dockerfile: Containerfile
     ports:
       - "8000:8000"
     volumes:
       - chroma_data:/app/chroma_data
     depends_on:
-      - ramalama
+      ramalama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health'); print('Health check passed')\" 2>/dev/null || { echo 'Health check failed'; exit 1; }"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   mcp-server:
     build:
-      context: ./mcp-server 
+      context: ./mcp-server
       dockerfile: Containerfile
     ports:
       - "8001:8001"
@@ -32,7 +45,14 @@ services:
       - FASTMCP_HOST=0.0.0.0
       - FASTMCP_PORT=8001
     depends_on:
-      - ramalama
+      ramalama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health'); print('Health check passed')\" 2>/dev/null || { echo 'Health check failed'; exit 1; }"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   ramalama_models:

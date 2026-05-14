@@ -398,3 +398,10 @@ podman volume inspect ramalama_models
 ### The TUI runs on the host
 
 The Textual TUI is not containerized — it runs directly on your machine and communicates with the backend over `localhost:8000`. This is intentional: TUIs need direct terminal access, and `dnf install` needs host-level permissions.
+
+
+Things to try:
+- journalctl output for the install.sh to check for error debug messages NOT THIS.
+- check the gnome search provider source code. 
+- check for dconf/gconf registration.
+- 

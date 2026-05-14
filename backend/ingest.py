@@ -12,14 +12,21 @@ import time
 import httpx
 from sentence_transformers import SentenceTransformer
 from chroma import collection
+import hashlib
 
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
-BATCH_SIZE = 64          # embeddings batch size
+BATCH_SIZE = 64  # embeddings batch size
 PROJECT_PAGE_SIZE = 100  # max allowed by COPR API
 PKG_PAGE_SIZE = 100
-MAX_PROJECTS = 500       # set to None to index everything
+MAX_PROJECTS = None  # set to None to index everything
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+def package_hash(package: dict) -> str:
+    """Generate a SHA256 hash for a package based on its name, summary, and description."""
+    raw = f"{package.get('name', '')}:{package.get('summary', '')}:{package.get('description', '')}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def copr_get(client: httpx.Client, path: str, params: dict) -> dict:
@@ -33,7 +40,7 @@ def copr_get(client: httpx.Client, path: str, params: dict) -> dict:
         except (httpx.HTTPStatusError, httpx.TransportError) as e:
             if attempt == 4:
                 raise
-            wait = 2 ** attempt
+            wait = 2**attempt
             print(f"  retrying {url} in {wait}s ({e})")
             time.sleep(wait)
 
@@ -42,10 +49,14 @@ def iter_projects(client: httpx.Client):
     """Yield all COPR projects, paginating through the full list."""
     offset = 0
     while True:
-        data = copr_get(client, "/project/list", {
-            "limit": PROJECT_PAGE_SIZE,
-            "offset": offset,
-        })
+        data = copr_get(
+            client,
+            "/project/list",
+            {
+                "limit": PROJECT_PAGE_SIZE,
+                "offset": offset,
+            },
+        )
         projects = data.get("items") or data.get("projects") or []
         if not projects:
             break
@@ -59,12 +70,16 @@ def iter_packages(client: httpx.Client, ownername: str, projectname: str):
     """Yield all packages in a COPR project."""
     offset = 0
     while True:
-        data = copr_get(client, "/package/list", {
-            "ownername": ownername,
-            "projectname": projectname,
-            "limit": PKG_PAGE_SIZE,
-            "offset": offset,
-        })
+        data = copr_get(
+            client,
+            "/package/list",
+            {
+                "ownername": ownername,
+                "projectname": projectname,
+                "limit": PKG_PAGE_SIZE,
+                "offset": offset,
+            },
+        )
         packages = data.get("items") or data.get("packages") or []
         if not packages:
             break
@@ -74,15 +89,36 @@ def iter_packages(client: httpx.Client, ownername: str, projectname: str):
         offset += PKG_PAGE_SIZE
 
 
-def flush_batch(ids, texts, metadatas):
-    embeddings = model.encode(texts, show_progress_bar=False).tolist()
-    collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+def flush_batch(ids, texts, metadatas, hashes):
+    """Upsert a batch of documents, skipping unchanged ones based on content hash."""
+    existing = collection.get(ids=ids, include=["metadatas"])
+    existing_hashes = {
+        doc_id: meta.get("content_hash")
+        for doc_id, meta in zip(existing["ids"], existing["metadatas"])
+    }
+
+    new_ids, new_texts, new_metas = [], [], []
+    for uid, text, meta, h in zip(ids, texts, metadatas, hashes):
+        if existing_hashes.get(uid) != h:
+            meta["content_hash"] = h
+            new_ids.append(uid)
+            new_texts.append(text)
+            new_metas.append(meta)
+
+    if not new_ids:
+        return  # entire batch unchanged, skip embedding call
+
+    embedder = model
+    embeddings = embedder.encode(new_texts).tolist()
+    collection.upsert(
+        ids=new_ids, embeddings=embeddings, documents=new_texts, metadatas=new_metas
+    )
 
 
 def main():
     total_pkgs = 0
     total_projects = 0
-    ids, texts, metadatas = [], [], []
+    ids, texts, metadatas, hashes = [], [], [], []
 
     with httpx.Client() as client:
         for project in iter_projects(client):
@@ -111,19 +147,22 @@ def main():
 
                     ids.append(uid)
                     texts.append(text)
-                    metadatas.append({
-                        "name": pkg_name,
-                        "summary": summary[:500],
-                        "description": description[:1000],
-                        "copr_project": f"{owner}/{name}",
-                        "ownername": owner,
-                        "projectname": name,
-                    })
+                    metadatas.append(
+                        {
+                            "name": pkg_name,
+                            "summary": summary[:500],
+                            "description": description[:1000],
+                            "copr_project": f"{owner}/{name}",
+                            "ownername": owner,
+                            "projectname": name,
+                        }
+                    )
+                    hashes.append(package_hash(pkg))
 
                     if len(ids) >= BATCH_SIZE:
-                        flush_batch(ids, texts, metadatas)
+                        flush_batch(ids, texts, metadatas, hashes)
                         total_pkgs += len(ids)
-                        ids, texts, metadatas = [], [], []
+                        ids, texts, metadatas, hashes = [], [], [], []
 
             except Exception as e:
                 print(f"  skipping {owner}/{name}: {e}", file=sys.stderr)
@@ -131,7 +170,7 @@ def main():
 
     # flush remainder
     if ids:
-        flush_batch(ids, texts, metadatas)
+        flush_batch(ids, texts, metadatas, hashes)
         total_pkgs += len(ids)
 
     print(f"\nDone. Indexed {total_pkgs} packages from {total_projects} projects.")

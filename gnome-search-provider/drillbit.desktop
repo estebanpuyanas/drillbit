@@ -1,8 +1,7 @@
 [Desktop Entry]
+Type=Application
 Name=Drillbit
 Comment=AI-powered package discovery for Fedora
-Exec=drillbit
+Exec=SCRIPT_PATH
 Icon=system-software-install
-Type=Application
-# NoDisplay keeps it out of the app grid — it's a search provider, not a launchable app
-NoDisplay=true
+DBusActivatable=false

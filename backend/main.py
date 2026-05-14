@@ -1,15 +1,122 @@
+import dataclasses
 import json
 import re
+import asyncio
 
+import httpx
 from fastapi import FastAPI
-from openai import OpenAI
+from openai import AsyncOpenAI
 from sentence_transformers import SentenceTransformer
-
-from chroma import client, collection
+from prompt import SYSTEM_PROMPT
+from chroma import collection
+from bm25 import bm25_search, reciprocal_rank_fusion
 
 app = FastAPI()
-llm = OpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
+llm = AsyncOpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
+COPR_API = "https://copr.fedorainfracloud.org/api_3"
+
+
+@dataclasses.dataclass
+class PackageResult:
+    """A single search result returned by /search.
+
+    Using a dataclass here makes the response schema explicit and eliminates
+    the repeated candidate_map.get(name, {}).get(field, "") chains.
+    """
+
+    name: str
+    summary: str = ""
+    copr_project: str = ""
+    score: float = 0.0
+    version: str = ""
+    homepage: str = ""
+    contact: str = ""
+    copr_description: str = ""
+    build_state: str = ""
+    submitted_on: int | None = None
+    ended_on: int | None = None
+    reason: str = ""
+
+
+def truncate(text: str, max_chars: int) -> str:
+    """Truncate text to max_chars, ending at the last complete sentence."""
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    last_period = cut.rfind(".")
+    if last_period > 0:
+        return cut[: last_period + 1]
+    return cut
+
+
+async def fetch_copr_project_stats(owner: str, project: str) -> dict:
+    """Fetch live metadata for a COPR project directly from the COPR API."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(
+                f"{COPR_API}/project",
+                params={"ownername": owner, "projectname": project},
+            )
+            if r.status_code != 200:
+                return {}
+            data = r.json()
+            return {
+                "homepage": data.get("homepage", ""),
+                "contact": data.get("contact", ""),
+                "description": truncate(data.get("description") or "", 300),
+            }
+    except Exception:
+        return {}
+
+
+async def fetch_latest_build(owner: str, project: str, package: str) -> dict:
+    """Fetch the latest build timestamps and version for a package."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(
+                f"{COPR_API}/build/list",
+                params={
+                    "ownername": owner,
+                    "projectname": project,
+                    "packagename": package,
+                    "limit": 1,
+                    "order": "id",
+                    "order_type": "DESC",
+                },
+            )
+            if r.status_code != 200:
+                return {}
+            items = r.json().get("items", [])
+            if not items:
+                return {}
+            build = items[0]
+            return {
+                "build_state": build.get("state", ""),
+                "submitted_on": build.get("submitted_on"),
+                "ended_on": build.get("ended_on"),
+                "version": (build.get("source_package") or {}).get("version", ""),
+            }
+    except Exception:
+        return {}
+
+
+async def enrich_one(c: dict) -> dict:
+    """Fetch COPR stats and latest build for a single candidate concurrently."""
+    copr_project = c.get("copr_project", "")
+    if copr_project and "/" in copr_project:
+        owner, project = copr_project.split("/", 1)
+        stats, build = await asyncio.gather(
+            fetch_copr_project_stats(owner, project),
+            fetch_latest_build(owner, project, c["name"]),
+        )
+        return {**c, **stats, **build}
+    return c
+
+
+async def enrich_candidates(candidates: list) -> list:
+    """Fetch live COPR stats and build info for all candidates in parallel."""
+    return list(await asyncio.gather(*(enrich_one(c) for c in candidates)))
 
 
 @app.get("/health")
@@ -19,7 +126,7 @@ async def health():
 
 @app.get("/test-llm")
 async def test_llm():
-    response = llm.chat.completions.create(
+    response = await llm.chat.completions.create(
         model="llama3.2:3b",
         messages=[{"role": "user", "content": "Name one Linux video editing package."}],
     )
@@ -31,31 +138,50 @@ async def search(q: str, limit: int = 5):
     # Step 1: ChromaDB vector search — pull more candidates than needed for re-ranking
     candidates = []
     if collection.count() > 0:
-        embedding = embedder.encode(q).tolist()
+        loop = asyncio.get_running_loop()
+        raw_embedding = await loop.run_in_executor(None, embedder.encode, q)
+        embedding = raw_embedding.tolist()
         n = min(limit * 3, collection.count())
         results = collection.query(query_embeddings=[embedding], n_results=n)
-        candidates = [
+        vector_candidates = [
             {
                 "name": results["metadatas"][0][i].get("name", results["ids"][0][i]),
-                "summary": results["metadatas"][0][i].get("summary", results["documents"][0][i][:120]),
+                "summary": results["metadatas"][0][i].get(
+                    "summary", results["documents"][0][i][:120]
+                ),
                 "copr_project": results["metadatas"][0][i].get("copr_project", ""),
                 "score": round(1.0 - float(results["distances"][0][i]), 4),
             }
             for i in range(len(results["ids"][0]))
         ]
 
-    # Step 2: LLM re-ranking — ask the model to pick the best matches from candidates
+        # BM25 search over package names (lazy index build on first call)
+        bm25_candidates = bm25_search(q, k=n)
+
+        # Reciprocal Rank Fusion between vector and BM25 rankings
+        candidates = reciprocal_rank_fusion(
+            vector_candidates=vector_candidates,
+            bm25_candidates=bm25_candidates,
+            limit=n,
+            k=60,
+        )
+
+    # Step 2: Enrich candidates with live COPR metadata via MCP tools
+    if candidates:
+        candidates = await enrich_candidates(candidates)
+
+    # Step 3: LLM re-ranking — ask the model to pick the best matches from candidates
     if candidates:
         candidate_list = "\n".join(
-            f"{i+1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
+            f"{i + 1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
         )
         try:
-            resp = llm.chat.completions.create(
+            resp = await llm.chat.completions.create(
                 model="llama3.2:3b",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a Fedora package expert. Reply only with valid JSON, no prose.",
+                        "content": SYSTEM_PROMPT,
                     },
                     {
                         "role": "user",
@@ -75,17 +201,31 @@ async def search(q: str, limit: int = 5):
                 ranked = json.loads(match.group())
                 # Merge LLM ranking with candidate metadata
                 candidate_map = {c["name"]: c for c in candidates}
-                return [
-                    {
-                        "name": p["name"],
-                        "summary": candidate_map.get(p["name"], {}).get("summary", ""),
-                        "copr_project": candidate_map.get(p["name"], {}).get("copr_project", ""),
-                        "reason": p.get("reason", ""),
-                        "score": candidate_map.get(p["name"], {}).get("score", 0.0),
-                    }
-                    for p in ranked[:limit]
-                    if p.get("name")
-                ]
+                results = []
+                for p in ranked[:limit]:
+                    name = p.get("name")
+                    if not name:
+                        continue
+                    base = candidate_map.get(name, {})
+                    results.append(
+                        dataclasses.asdict(
+                            PackageResult(
+                                name=name,
+                                version=base.get("version", ""),
+                                summary=base.get("summary", ""),
+                                copr_project=base.get("copr_project", ""),
+                                copr_description=base.get("description", ""),
+                                homepage=base.get("homepage", ""),
+                                contact=base.get("contact", ""),
+                                build_state=base.get("build_state", ""),
+                                submitted_on=base.get("submitted_on"),
+                                ended_on=base.get("ended_on"),
+                                reason=p.get("reason", ""),
+                                score=base.get("score", 0.0),
+                            )
+                        )
+                    )
+                return results
         except Exception:
             pass
         # LLM failed — return raw vector results
@@ -93,12 +233,12 @@ async def search(q: str, limit: int = 5):
 
     # Fallback: ask the LLM for package suggestions when ChromaDB is empty
     try:
-        resp = llm.chat.completions.create(
+        resp = await llm.chat.completions.create(
             model="llama3.2:3b",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a Fedora package expert. Reply only with valid JSON, no prose.",
+                    "content": SYSTEM_PROMPT,
                 },
                 {
                     "role": "user",
@@ -115,7 +255,13 @@ async def search(q: str, limit: int = 5):
         if match:
             pkgs = json.loads(match.group())
             return [
-                {"name": p["name"], "summary": p.get("summary", ""), "copr_project": "", "reason": "", "score": 1.0}
+                {
+                    "name": p["name"],
+                    "summary": p.get("summary", ""),
+                    "copr_project": "",
+                    "reason": "",
+                    "score": 1.0,
+                }
                 for p in pkgs[:limit]
             ]
     except Exception:
