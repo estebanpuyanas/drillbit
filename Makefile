@@ -47,7 +47,7 @@ ingest-since:
 	podman exec -it drillbit-test_backend_1 python ingest.py --since $(SINCE)
 
 tests:
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 tui:
 	make containers && python3 tui.py
