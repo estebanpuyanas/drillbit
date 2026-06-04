@@ -7,7 +7,7 @@ import httpx
 from fastapi import FastAPI
 from openai import AsyncOpenAI
 from sentence_transformers import SentenceTransformer
-from prompt import SYSTEM_PROMPT
+from prompt import SYSTEM_PROMPT, QUERY_EXPANSION_PROMPT
 from chroma import collection
 from bm25 import bm25_search, reciprocal_rank_fusion
 
@@ -15,6 +15,7 @@ app = FastAPI()
 llm = AsyncOpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
+CONFIDENCE_THRESHOLD = 0.40  # top vector score below this triggers live COPR fallback
 
 
 @dataclasses.dataclass
@@ -119,6 +120,67 @@ async def enrich_candidates(candidates: list) -> list:
     return list(await asyncio.gather(*(enrich_one(c) for c in candidates)))
 
 
+async def expand_query(query: str) -> list[str]:
+    """Ask the LLM to convert a natural-language query into COPR keyword phrases."""
+    try:
+        resp = await llm.chat.completions.create(
+            model="llama3.2:3b",
+            messages=[
+                {"role": "system", "content": QUERY_EXPANSION_PROMPT},
+                {"role": "user", "content": query},
+            ],
+            temperature=0.0,
+        )
+        text = resp.choices[0].message.content.strip()
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if match:
+            keywords = json.loads(match.group())
+            if isinstance(keywords, list) and all(isinstance(k, str) for k in keywords):
+                return keywords[:3]
+    except Exception:
+        pass
+    return [query]
+
+
+async def search_copr_live(keyword: str, limit: int = 10) -> list[dict]:
+    """Search COPR packages by keyword, returning candidates in the same schema as vector search."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(
+                f"{COPR_API}/package/search",
+                params={"query": keyword, "limit": limit},
+            )
+            if r.status_code != 200:
+                return []
+            items = r.json().get("items") or []
+            return [
+                {
+                    "name": p.get("name", ""),
+                    "summary": p.get("summary", ""),
+                    "copr_project": f"{p.get('ownername', '')}/{p.get('projectname', '')}",
+                    "score": 0.0,
+                }
+                for p in items
+            ]
+    except Exception:
+        return []
+
+
+async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
+    """Expand query to keywords and search COPR live, deduplicating across keywords."""
+    keywords = await expand_query(query)
+    result_sets = await asyncio.gather(*(search_copr_live(kw, limit=limit) for kw in keywords))
+    seen: set[tuple[str, str]] = set()
+    merged = []
+    for results in result_sets:
+        for pkg in results:
+            key = (pkg["name"], pkg["copr_project"])
+            if key not in seen:
+                seen.add(key)
+                merged.append(pkg)
+    return merged
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -166,11 +228,24 @@ async def search(q: str, limit: int = 5):
             k=60,
         )
 
-    # Step 2: Enrich candidates with live COPR metadata via MCP tools
+    # Step 2: MCP live fallback — if index confidence is low, supplement with live COPR search
+    top_score = max((c["score"] for c in candidates), default=0.0)
+    if top_score < CONFIDENCE_THRESHOLD:
+        print(
+            f"[fallback] top_score={top_score:.3f} < {CONFIDENCE_THRESHOLD}, "
+            f"querying COPR live for: {q!r}",
+            flush=True,
+        )
+        mcp_hits = await mcp_fallback_search(q, limit=limit * 2)
+        local_keys = {(c["name"], c["copr_project"]) for c in candidates}
+        new_hits = [h for h in mcp_hits if (h["name"], h["copr_project"]) not in local_keys]
+        candidates = candidates + new_hits
+
+    # Step 3: Enrich candidates with live COPR metadata
     if candidates:
         candidates = await enrich_candidates(candidates)
 
-    # Step 3: LLM re-ranking — ask the model to pick the best matches from candidates
+    # Step 4: LLM re-ranking — ask the model to pick the best matches from candidates
     if candidates:
         candidate_list = "\n".join(
             f"{i + 1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)

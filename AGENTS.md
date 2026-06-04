@@ -20,21 +20,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 User query (Textual TUI, runs on host)
-    ↓
+    ↓  HTTP GET /search?q=...
 backend:8000 (FastAPI)
-    ├── sentence-transformers → embeddings
-    ├── ChromaDB vector search → top-N candidates
-    └── ramalama:8080 (llama3.2:3b, OpenAI API)
-            ↓ MCP tool calls during generation
-        mcp-server:8001 (FastMCP, SSE transport)
-            └── fetches live metadata from COPR/DNF
+    ├── sentence-transformers  → embed query (all-MiniLM-L6-v2)
+    ├── ChromaDB vector search → semantic top-N candidates
+    ├── BM25 full-text search  → keyword top-N candidates (same index)
+    ├── Reciprocal Rank Fusion → fuse both rankings
+    ├── COPR API (live, direct httpx calls)
+    │       ├── fallback: keyword search if local confidence < 0.40
+    │       └── enrichment: description, version, build state per candidate
+    └── ramalama:8080 (llama3.2:3b, OpenAI-compatible API)
+            └── re-ranks candidates, returns name + one-sentence reason
     ↓
-Deterministic re-ranking (votes, freshness, size)
-    ↓
-TUI displays results → user confirms → dnf install (host only)
+TUI displays results table (Package / Description / Reason / ...)
 ```
 
-The TUI runs on the host (not containerized) because it needs terminal access and host-level `dnf` permissions.
+**mcp-server:8001** (FastMCP, SSE transport) exposes the same COPR tools as MCP endpoints (`get_package_info`, `search_copr_packages`, `get_copr_project_stats`, `get_package_build_stats`). The backend currently calls COPR directly rather than via the MCP server; the MCP server is available for future LLM tool-use integration.
+
+The TUI runs on the host (not containerized) because it needs terminal access.
 
 ## Services and Ports
 
@@ -62,6 +65,27 @@ podman-compose down
 # podman-compose down -v  ← DO NOT DO THIS
 ```
 
+### Running the TUI
+
+```bash
+uv run tui.py   # run on host after the stack is up
+```
+
+### Populating ChromaDB
+
+ChromaDB starts empty. Without a populated index the backend falls back to live COPR keyword search (no descriptions or reasons in results). Run the ingest script inside the backend container:
+
+```bash
+podman exec -it drillbit_backend_1 python ingest.py
+```
+
+Long-running crawl; safe to re-run (upsert is idempotent). Check index size:
+
+```bash
+podman exec drillbit_backend_1 python3 -c \
+  "from chroma import collection; print(collection.count())"
+```
+
 ### Health Checks
 
 ```bash
@@ -80,17 +104,28 @@ podman ps -a                                # list all containers
 
 ### Dependency Management
 
-Everything uses **uv**. Local dev is managed via `pyproject.toml`. Container services declare deps in `requirements.in` — uv compiles and syncs them inside the container at build time, so no local pip-compile step is needed.
+Everything uses **uv**. There are two separate dependency domains:
+
+**Local dev (TUI + tests)**: `pyproject.toml` + `uv.lock` at the repo root:
 
 ```bash
-# Add a local dev or test dependency
-# Edit pyproject.toml, then:
+# Add to [project.dependencies] or [dependency-groups].dev in pyproject.toml, then:
 uv sync --dev
-
-# Add a backend container dependency
-echo "new-package" >> backend/requirements.in
-podman-compose build --no-cache backend   # uv compiles inside the container
 ```
+
+**Container services**: each service has `requirements.in`; uv compiles and installs inside the container at build time. No local pip-compile needed.
+
+```bash
+# Add a backend dependency
+echo "new-package" >> backend/requirements.in
+podman-compose build --no-cache backend
+
+# Add an mcp-server dependency
+echo "new-package" >> mcp-server/requirements.in
+podman-compose build --no-cache mcp-server
+```
+
+`backend/requirements.txt` and `mcp-server/requirements.txt` are generated inside the container and gitignored, never commit them.
 
 ### Local Dev Setup
 
@@ -102,16 +137,21 @@ uv sync --dev   # creates .venv and installs all deps in one step
 
 - **PyTorch** in the backend is forced CPU-only via `--extra-index-url https://download.pytorch.org/whl/cpu` in `backend/requirements.in`. This keeps the backend image ~1.6GB instead of ~8GB. Do not change this to a GPU build without explicit intent.
 - Python version is pinned to **3.12** via `.python-version` (pyenv).
-- `uv.lock` is committed to the repo. `backend/requirements.txt` and `mcp-server/requirements.txt` are generated inside the container — they are gitignored and never need to exist locally.
+- `uv.lock` is committed to the repo. `backend/requirements.txt` and `mcp-server/requirements.txt` are generated inside the container, they are gitignored and never need to exist locally.
 
 ## Key Files
 
-- `podman-compose.yml` — service definitions, port mappings, named volumes
-- `backend/main.py` — FastAPI app, OpenAI client (→ ramalama:8080), health/test endpoints
-- `backend/chroma.py` — ChromaDB client init, `packages` collection
-- `mcp-server/main.py` — FastMCP server with tools, SSE transport
-- `ramalama/Containerfile` — serves llama3.2:3b on port 8080
-- `backend/Containerfile` — pre-downloads `all-MiniLM-L6-v2` model during image build
+- `podman-compose.yml`: service definitions, port mappings, named volumes (`ramalama_models`, `chroma_data`)
+- `tui.py`: Textual TUI; calls `GET /search` on `localhost:8000`
+- `backend/main.py`: FastAPI `/search` endpoint: vector search, BM25, RRF, COPR enrichment, LLM re-ranking
+- `backend/ingest.py`: one-time COPR → ChromaDB crawl; run inside container to populate the index
+- `backend/chroma.py`: ChromaDB `PersistentClient` init; `packages` collection persisted to `chroma_data` volume
+- `backend/bm25.py`: `BM25Index` class (lazy build from ChromaDB) + `reciprocal_rank_fusion`
+- `backend/scorer.py`: package quality scoring used by ingest to pick top-N packages
+- `backend/prompt.py`: `SYSTEM_PROMPT` and `QUERY_EXPANSION_PROMPT` for LLM calls
+- `mcp-server/main.py`: FastMCP server; COPR tools as MCP endpoints on port 8001
+- `ramalama/Containerfile`: serves llama3.2:3b on port 8080
+- `backend/Containerfile`: pre-downloads `all-MiniLM-L6-v2` at image build time
 
 ---
 
@@ -119,15 +159,15 @@ uv sync --dev   # creates .venv and installs all deps in one step
 
 ### No Leading Underscores
 
-Never prefix methods or variables with `_`. Use `func_name` and `var_name`, not `_func_name` or `_var_name`. The underscore convention signals "private/internal — do not call", which creates false impressions about intent and makes the code noisier to read.
+Never prefix methods or variables with `_`. Use `func_name` and `var_name`, not `_func_name` or `_var_name`. The underscore convention signals "private/internal / do not call", which creates false impressions about intent and makes the code noisier to read.
 
-**Hard exceptions — framework-mandated names that must not be changed:**
+**Hard exceptions/framework-mandated names that must not be changed:**
 - **Textual TUI**: `on_*`, `watch_*`, `action_*` method prefixes are required by the framework's event/reactive system
 - **D-Bus `async_callbacks`**: the tuple values must exactly match the corresponding function parameter names (e.g., `async_callbacks=("return_cb", "error_cb")` requires `def Method(self, ..., return_cb, error_cb)`)
 - **pytest dunder fixtures**: `__tracebackhide__`, `__pytest_mark__`, etc.
 - **Python dunder methods**: `__init__`, `__repr__`, `__str__`, etc. — these are obviously fine
 
-**Test conftest pattern** — module-level mock objects must not share names with the pytest fixtures that return them. Suffix the module-level object with `_mock`:
+**Test conftest pattern**: module-level mock objects must not share names with the pytest fixtures that return them. Suffix the module-level object with `_mock`:
 
 ```python
 # conftest.py

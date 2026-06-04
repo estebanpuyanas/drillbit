@@ -1,8 +1,8 @@
-# Drillbit 🪨⛏️
+# Drillbit
 
-> AI-powered package discovery for Fedora. Describe what you need in plain English and Drillbit finds, ranks, and installs the right package.
+> AI-powered package discovery for Fedora. Describe what you need in plain English and Drillbit finds and ranks the right package.
 
-Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**. Everything runs locally, no cloud subscriptions, no data leaving your machine.
+Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**. Everything runs locallywith no need for cloud subscriptions, no data leaving your machine.
 
 ---
 
@@ -11,9 +11,10 @@ Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**.
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Podman Setup](#podman-setup)
-- [Project Setup](#project-setup)
-- [Dependency Management (pip-tools)](#dependency-management-pip-tools)
-- [Running the Stack](#running-the-stack)
+- [First Run](#first-run)
+- [Running the TUI](#running-the-tui)
+- [Populating the Search Index](#populating-the-search-index)
+- [Dependency Management](#dependency-management)
 - [Key Commands Reference](#key-commands-reference)
 - [Project Structure](#project-structure)
 
@@ -22,46 +23,44 @@ Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**.
 ## Architecture
 
 ```
-User query (natural language)
+User query (plain English)
         ↓
-  sentence-transformers        ← embeds query (CPU-only, ~90MB model)
+  Textual TUI  (runs on host)
+        ↓  HTTP GET /search?q=...
+  FastAPI backend  (backend:8000)
+        ├── sentence-transformers   ← embeds query (all-MiniLM-L6-v2, CPU-only)
+        ├── ChromaDB vector search  ← semantic candidates from pre-indexed packages
+        ├── BM25 full-text search   ← keyword candidates from same index
+        ├── Reciprocal Rank Fusion  ← merges both rankings
+        ├── COPR API (live)         ← enriches candidates (description, version, build state)
+        │   fallback: live COPR keyword search if local index confidence is low
+        └── RamaLama  (ramalama:8080, llama3.2:3b)
+                └── re-ranks candidates, returns name + one-sentence reason
         ↓
-  ChromaDB vector search       ← searches pre-indexed package metadata
-        ↓
-  Top N candidate packages
-        ↓
-  RamaLama (llama3.2:3b)       ← via OpenAI-compatible API on :8080
-        ↓  uses MCP tools mid-generation
-  FastMCP server               ← fetches live metadata from COPR/DNF
-  (votes, size, maintained?, and any other metadata selected by the user)
-        ↓
-  Deterministic re-ranking     ← votes, freshness, install size
-        ↓
-  Textual TUI                  ← runs on host, keyboard-driven
-        ↓
-  Install confirmation → dnf install (host only)
+  JSON results → TUI table (Package / Description / Reason / ...)
 ```
 
 ### Services
 
 | Service | Port | Description |
 |---|---|---|
-| `ramalama` | 8080 | Local LLM server (OpenAI-compatible API) |
-| `backend` | 8000 | FastAPI — embeddings, ChromaDB, ranking |
-| `mcp-server` | 8001 | FastMCP — live package metadata tools |
+| `ramalama` | 8080 | Local LLM server — llama3.2:3b, OpenAI-compatible API |
+| `backend` | 8000 | FastAPI — embeddings, ChromaDB, BM25, COPR enrichment, LLM re-ranking |
+| `mcp-server` | 8001 | FastMCP — COPR tools exposed as MCP endpoints |
 
-The **TUI runs on the host**, not in a container since it needs direct terminal access and host-level `dnf` permissions. **For the purposes of the Hackathon we will not be installing Fedora, since Mac/Windows would run it in a VM and any Linux user would need to do dual boot or separate partition. The tool will simply implement the AI-MCP workflow and print out the final ranked list of packages, without actually running the install command.**
+The **TUI runs on the host**, not in a container — it needs direct terminal access. For the purposes of this hackathon the tool ranks packages but does not run `dnf install` (which would require a Fedora host).
 
 ---
 
 ## Prerequisites
 
 - **Python 3.12** (via pyenv recommended)
+- **uv** `pip install uv` or see [uv docs](https://docs.astral.sh/uv/)
 - **Podman** + **podman-compose**
 - **Git**
 
 > [!NOTE]
-> **Mac users**: Install [Podman Desktop](https://podman-desktop.io/) which it handles the Podman Machine (Linux VM) setup for you. Do this before the day of the event, first-time init takes a few minutes.
+> **Mac users**: Install [Podman Desktop](https://podman-desktop.io/) as it handles the Podman Machine (Linux VM) setup. Do this before the event; first-time init takes several minutes.
 >
 > **Windows users**: Install Podman in WSL2 or use Podman Desktop for Windows.
 
@@ -71,9 +70,9 @@ The **TUI runs on the host**, not in a container since it needs direct terminal 
 
 ### Why Podman instead of Docker?
 
-This project uses **RamaLama** (Red Hat's local LLM runtime), which runs models as OCI containers internally and requires Podman. Docker cannot provide the privileges RamaLama needs at runtime. Additionally, since this is a RedHat hackathon it makes sense to use their tools.
+This project uses **RamaLama** (Red Hat's local LLM runtime), which runs models as OCI containers and requires Podman. Docker cannot provide the privileges RamaLama needs at runtime.
 
-Podman is **Docker-compatible**: the same `Containerfile` format, same image registries, nearly identical CLI. You can have both installed simultaneously as they don't conflict.
+Podman is **Docker-compatible**: same `Containerfile` format, same registries, nearly identical CLI. Both can coexist.
 
 ### Linux (Arch/EndeavourOS)
 
@@ -89,15 +88,13 @@ sudo dnf install podman podman-compose
 
 ### Mac
 
-Download and install [Podman Desktop](https://podman-desktop.io/), then initialize the Podman Machine:
-
 ```bash
 brew install podman
 podman machine init
 podman machine start
 ```
 
-> Run `podman machine start` each time you restart your Mac, or set it to start automatically via Podman Desktop settings.
+> Run `podman machine start` each time you restart your Mac, or configure auto-start in Podman Desktop.
 
 ### Windows
 
@@ -110,14 +107,12 @@ sudo apt install podman
 
 ### Starting the Podman socket (Linux only)
 
-Podman uses a socket for API communication. Start and enable it so it persists across reboots:
-
 ```bash
 systemctl --user start podman.socket
-systemctl --user enable podman.socket  # auto-start on login
+systemctl --user enable podman.socket  # persist across reboots
 ```
 
-Verify it's running:
+Verify:
 
 ```bash
 systemctl --user status podman.socket
@@ -125,75 +120,131 @@ systemctl --user status podman.socket
 
 ### Avoiding the Docker Compose plugin conflict
 
-On Linux, if you have Docker installed alongside Podman, `podman compose` (with a space) may delegate to the Docker Compose plugin instead of podman-compose. Always use:
+On Linux with Docker also installed, always use the hyphenated form:
 
 ```bash
-podman-compose   # hyphen — uses the native Podman implementation
-```
-
-Not:
-
-```bash
-podman compose   # space — may fall through to Docker plugin
+podman-compose   # correct — native Podman implementation
+podman compose   # wrong — may fall through to Docker plugin
 ```
 
 ---
 
-## Project Setup
+## First Run
 
-### 1. Clone the repo
+### 1. Clone and enter the repo
 
 ```bash
-git clone github.com/estebanpuyanas/drillbit-test.git # Will probs change this into a template and we can create a fresh repo from it for the hackathon.
-cd drillbit-test
+git clone <repo-url>
+cd drillbit
 ```
 
 ### 2. Set Python version
 
 ```bash
 pyenv install 3.12      # skip if already installed
-pyenv local 3.12        # creates .python-version at repo root
+pyenv local 3.12
 ```
 
 ### 3. Install local dev dependencies
 
 ```bash
-uv sync --dev   # creates .venv and installs everything in one step
+uv sync --dev   # creates .venv and installs everything from pyproject.toml
 ```
+
+### 4. Start the container stack
+
+```bash
+podman-compose up -d
+```
+
+The first run pulls the LLM model (~2GB for llama3.2:3b). **Do this before the hackathon on a good connection.** Model data is stored in the `ramalama_models` named volume and persists between restarts.
+
+> [!WARNING]
+> Never run `podman-compose down -v` the `-v` flag deletes volumes including the downloaded model. Use `podman-compose down` (no `-v`) to stop services.
+
+### 5. Verify the stack
+
+```bash
+curl http://localhost:8000/health        # backend → {"status":"ok"}
+curl http://localhost:8080/v1/models     # ramalama → model list
+curl http://localhost:8001/health        # mcp-server → {"status":"ok"}
+```
+
+---
+
+## Running the TUI
+
+The TUI is not containerized. Run it on your host after the stack is up:
+
+```bash
+uv run tui.py
+```
+
+**Key bindings:**
+
+| Key | Action |
+|---|---|
+| Type + Enter | Search |
+| `f1` | Focus search input |
+| `c` | Toggle column picker |
+| `ctrl+l` | Clear results / new search |
+| `ctrl+q` | Quit |
+
+---
+
+## Populating the Search Index
+
+ChromaDB starts empty. Without a populated index the backend falls back to a live COPR keyword search, which returns results but no descriptions or reasons.
+
+Run the ingest script inside the backend container to crawl COPR and populate ChromaDB:
+
+```bash
+podman exec -it drillbit_backend_1 python ingest.py
+```
+
+This is a long-running crawl (it pages through all public COPR projects and packages, scores them, and upserts the top 1000 into ChromaDB). Progress is printed to stdout. It is safe to re-run — upsert is idempotent and unchanged packages are skipped.
+
+After ingest completes, the full pipeline (vector search + BM25 + LLM re-ranking) activates and results will include descriptions and reasons.
 
 ---
 
 ## Dependency Management
 
-Everything uses **uv**. Local dev is managed via `pyproject.toml` + `uv.lock`. Container services declare deps in `requirements.in` — uv compiles and syncs them inside the container at build time.
+Everything uses **uv**. There are two separate dependency domains:
 
-```
-drillbit/
-├── pyproject.toml        ← local dev + test deps
-├── uv.lock               ← committed lockfile
-├── backend/
-│   └── requirements.in   ← backend direct deps (compiled by uv inside the container)
-└── mcp-server/
-    └── requirements.in   ← mcp direct deps (compiled by uv inside the container)
-```
+### Local dev (TUI + tests)
 
-### Adding a local dev/test dependency
+Managed via `pyproject.toml` + `uv.lock` at the repo root.
 
 ```bash
-# Edit pyproject.toml, then:
+# Install / sync everything (including dev extras)
+uv sync --dev
+
+# Add a new local dependency
+# 1. Edit pyproject.toml (add to [project.dependencies] or [dependency-groups].dev)
+# 2. Then:
 uv sync --dev
 ```
 
-### Adding a backend or mcp-server container dependency
+### Container services (backend, mcp-server)
+
+Each service has its own `requirements.in` file. `uv` compiles and installs these **inside the container** at build time, no local pip-compile step is needed.
 
 ```bash
+# Add a new backend dependency
 echo "new-package" >> backend/requirements.in
-podman-compose build --no-cache backend   # uv compiles inside the container
+podman-compose build --no-cache backend
+
+# Add a new mcp-server dependency
+echo "new-package" >> mcp-server/requirements.in
+podman-compose build --no-cache mcp-server
 ```
 
-### Important: CPU-only PyTorch
+`backend/requirements.txt` and `mcp-server/requirements.txt` are generated inside the container, they are gitignored and should never be committed.
 
-`sentence-transformers` pulls PyTorch as a dependency. By default this installs the full CUDA build (~6GB of NVIDIA GPU libraries). Since this project runs on AMD and Apple Silicon, we force the CPU-only build in `backend/requirements.in`:
+### PyTorch CPU-only (important)
+
+`sentence-transformers` pulls PyTorch as a dependency. The default PyTorch build includes full CUDA libraries (~6GB). The backend `requirements.in` forces the CPU-only build:
 
 ```
 --extra-index-url https://download.pytorch.org/whl/cpu
@@ -201,52 +252,7 @@ torch
 sentence-transformers
 ```
 
-This keeps the backend image at ~1.6GB instead of ~8GB.
-
----
-
-## Running the Stack
-
-### First run
-
-The first `podman-compose up` will pull the LLM model (~2GB for llama3.2:3b). This requires a good internet connection. **Do this before the hackathon on your home network.**
-
-```bash
-podman-compose up -d
-```
-
-Model data is stored in a named volume (`ramalama_models`) and persists between restarts. Subsequent starts are fast.
-
-> [!WARNING]
-> **Critical**: never run `podman-compose down -v` — the `-v` flag deletes volumes including your downloaded model. Use `podman-compose down` (without `-v`) to stop services.
-
-### Subsequent runs
-
-```bash
-podman-compose up -d
-```
-
-### Stopping
-
-```bash
-podman-compose down        # stops containers, preserves volumes
-```
-
-### Checking service health
-
-```bash
-# All containers and their status
-podman ps -a
-
-# Backend health check
-curl http://localhost:8000/health
-
-# RamaLama model confirmation
-curl http://localhost:8080/v1/models
-
-# MCP server SSE stream (hangs open — that's correct)
-curl http://localhost:8001/sse
-```
+Do not remove this index URL as it keeps the backend image at ~1.6GB instead of ~8GB.
 
 ---
 
@@ -256,11 +262,10 @@ curl http://localhost:8001/sse
 
 ```bash
 podman-compose up -d                    # start all services detached
-podman-compose down                     # stop all services
+podman-compose down                     # stop all services (preserves volumes)
 podman-compose build --no-cache <svc>  # force full rebuild of a service
 podman-compose logs -f <svc>           # follow logs for a service
 podman ps -a                           # list all containers with status
-podman ps -s                           # list containers with size info
 ```
 
 ### Images
@@ -269,39 +274,24 @@ podman ps -s                           # list containers with size info
 podman images                          # list all images and sizes
 podman images | grep drillbit          # filter to project images
 podman rmi <image>                     # delete a specific image
-podman image prune                     # delete all dangling (untagged) images
+podman image prune                     # delete dangling (untagged) images
 podman system prune                    # clean all unused containers/images
 ```
 
 ### Debugging
 
 ```bash
-podman logs <container-name>           # dump logs from a container
-podman run --rm <image> cat /app/main.py   # inspect a file inside an image
-podman cp local/file container:/path   # copy file into running container (dev only)
-podman restart <container-name>        # restart a specific container
+podman logs <container-name>                         # dump container logs
+podman exec -it drillbit_backend_1 python ingest.py  # run ingest
+podman exec drillbit_backend_1 python3 -c \
+  "from chroma import collection; print(collection.count())"  # check index size
+podman restart <container-name>                      # restart a service
 ```
 
-### Useful patterns
+### Syntax check before rebuilding
 
 ```bash
-# Force remove all stopped containers
-podman rm -f $(podman ps -aq)
-
-# Check what's actually inside a built image
-podman run --rm localhost/drillbit-test_backend:latest pip list
-
-# Check (and ensure) that podman.socket is running:
-# Linux:
-
-systemctl --user status podman.socket # check status.
-systemctl --user enable --now podman.socket # enable and start if not running.
-
-# MacOS:
-podman machine start # start the Podman Machine if not already running. It is also possible to set it to auto-start in Podman Desktop settings.
-
-# Verify syntax before rebuilding
-python3 -c "import ast; ast.parse(open('backend/main.py').read()); print('syntax ok')"
+python3 -c "import ast; ast.parse(open('backend/main.py').read()); print('ok')"
 ```
 
 ---
@@ -309,67 +299,42 @@ python3 -c "import ast; ast.parse(open('backend/main.py').read()); print('syntax
 ## Project Structure
 
 ```
-drillbit-test/
-├── podman-compose.yml        # service orchestration
-├── requirements.in           # root: TUI + local dev deps
-├── requirements.txt          # generated
-├── .python-version           # pyenv: pins Python 3.12
-├── .venv/                    # local virtual environment (gitignored)
+drillbit/
+├── podman-compose.yml        ← service orchestration
+├── pyproject.toml            ← local dev + TUI deps (uv)
+├── uv.lock                   ← committed lockfile
+├── ruff.toml                 ← linter config
+├── tui.py                    ← Textual TUI (run on host with: uv run tui.py)
+├── .python-version           ← pyenv: pins Python 3.12
+├── .venv/                    ← local virtual environment (gitignored)
 │
 ├── ramalama/
-│   └── Containerfile         # RamaLama LLM server (llama3.2:3b)
+│   └── Containerfile         ← serves llama3.2:3b on port 8080
 │
 ├── backend/
-│   ├── Containerfile
-│   ├── main.py               # FastAPI app
-│   ├── requirements.in
-│   └── requirements.txt      # generated
+│   ├── Containerfile         ← pre-downloads all-MiniLM-L6-v2 at build time
+│   ├── requirements.in       ← backend direct deps (compiled by uv inside container)
+│   ├── main.py               ← FastAPI app: /search endpoint, COPR enrichment, LLM re-ranking
+│   ├── ingest.py             ← one-time COPR → ChromaDB ingestion script
+│   ├── chroma.py             ← ChromaDB client init (persists to chroma_data volume)
+│   ├── bm25.py               ← BM25 full-text index + Reciprocal Rank Fusion
+│   ├── scorer.py             ← package quality scoring for ingest
+│   └── prompt.py             ← LLM system prompts
 │
-└── mcp-server/
-    ├── Containerfile
-    ├── main.py               # FastMCP server + tools
-    ├── requirements.in
-    └── requirements.txt      # generated
+├── mcp-server/
+│   ├── Containerfile
+│   ├── requirements.in       ← mcp-server direct deps
+│   └── main.py               ← FastMCP server: COPR tools as MCP endpoints (port 8001)
+│
+├── gnome-search-provider/
+│   └── search_provider.py    ← GNOME Shell search provider integration
+│
+└── tests/
+    ├── conftest.py
+    ├── test_backend_api.py
+    ├── test_enrichment.py
+    ├── test_ingest.py
+    ├── test_mcp_tools.py
+    ├── test_scorer.py
+    └── test_search_provider.py
 ```
-
----
-
-## Misc Notes
-
-### Container registries
-
-This project pulls base images from:
-- `quay.io` — Red Hat's registry, used for RamaLama (`quay.io/ramalama/ramalama:latest`)
-- `docker.io` — Docker Hub, used for Python base image (`python:3.12-slim`)
-
-Both are public and require no authentication to pull.
-
-### Containerfile vs Dockerfile
-
-This project uses `Containerfile` (the Podman/Red Hat convention) instead of `Dockerfile`. They are identical in syntax. When using `podman-compose`, specify the filename explicitly in `podman-compose.yml`:
-
-```yaml
-build:
-  context: ./backend
-  dockerfile: Containerfile
-```
-
-### Model persistence
-
-The LLM model is stored in a named Podman volume (`ramalama_models`). To see your volumes:
-
-```bash
-podman volume ls
-podman volume inspect ramalama_models
-```
-
-### The TUI runs on the host
-
-The Textual TUI is not containerized — it runs directly on your machine and communicates with the backend over `localhost:8000`. This is intentional: TUIs need direct terminal access, and `dnf install` needs host-level permissions.
-
-
-Things to try:
-- journalctl output for the install.sh to check for error debug messages NOT THIS.
-- check the gnome search provider source code. 
-- check for dconf/gconf registration.
-- 

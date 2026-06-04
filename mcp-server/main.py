@@ -82,5 +82,31 @@ def search_copr_packages(query: str, limit: int = 5) -> list:
         ]
 
 
+@mcp.tool()
+def get_package_build_stats(ownername: str, projectname: str, packagename: str) -> dict:
+    """Return build count, latest build state, and latest build timestamp for a package."""
+    with httpx.Client(timeout=10) as client:
+        r = client.get(
+            f"{COPR_API}/build/list",
+            params={
+                "ownername": ownername,
+                "projectname": projectname,
+                "packagename": packagename,
+                "limit": 50,
+                "order": "id",
+                "order_type": "DESC",
+            },
+        )
+        if r.status_code != 200:
+            return {"error": f"HTTP {r.status_code}"}
+        items = r.json().get("items") or []
+        latest = items[0] if items else {}
+        return {
+            "build_count": len(items),
+            "latest_state": latest.get("state", ""),
+            "latest_ended_on": latest.get("ended_on"),
+        }
+
+
 if __name__ == "__main__":
     mcp.run(transport="sse")

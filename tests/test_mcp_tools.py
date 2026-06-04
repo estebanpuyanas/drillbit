@@ -28,6 +28,7 @@ mcp_spec.loader.exec_module(mcp_module)
 get_package_info = mcp_module.get_package_info
 get_copr_project_stats = mcp_module.get_copr_project_stats
 search_copr_packages = mcp_module.search_copr_packages
+get_package_build_stats = mcp_module.get_package_build_stats
 
 COPR = "https://copr.fedorainfracloud.org/api_3"
 
@@ -198,3 +199,50 @@ def test_search_copr_packages_respects_limit():
     result = search_copr_packages("video", limit=3)
 
     assert len(result) <= 3
+
+
+# ── get_package_build_stats ───────────────────────────────────────────────────
+
+
+@respx.mock
+def test_get_package_build_stats_returns_expected_fields():
+    respx.get(f"{COPR}/build/list").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {"state": "succeeded", "ended_on": 1700000000},
+                    {"state": "succeeded", "ended_on": 1699000000},
+                ]
+            },
+        )
+    )
+
+    result = get_package_build_stats("user", "project", "mypkg")
+
+    assert result["build_count"] == 2
+    assert result["latest_state"] == "succeeded"
+    assert result["latest_ended_on"] == 1700000000
+
+
+@respx.mock
+def test_get_package_build_stats_handles_empty_build_list():
+    respx.get(f"{COPR}/build/list").mock(
+        return_value=httpx.Response(200, json={"items": []})
+    )
+
+    result = get_package_build_stats("user", "project", "newpkg")
+
+    assert result["build_count"] == 0
+    assert result["latest_state"] == ""
+    assert result["latest_ended_on"] is None
+
+
+@respx.mock
+def test_get_package_build_stats_handles_404():
+    respx.get(f"{COPR}/build/list").mock(return_value=httpx.Response(404))
+
+    result = get_package_build_stats("user", "project", "nonexistent")
+
+    assert "error" in result
+    assert "404" in result["error"]

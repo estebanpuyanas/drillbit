@@ -16,7 +16,7 @@ from unittest.mock import patch
 from ingest import (
     NOISE_DESCRIPTION_MARKERS,
     NOISE_INSTRUCTIONS_MARKERS,
-    fetch_project_instructions,
+    fetch_project_details,
     is_noise_project,
     main,
 )
@@ -108,57 +108,63 @@ def test_both_fields_match_still_noise():
     )
 
 
-# ── fetch_project_instructions ────────────────────────────────────────────────
+# ── fetch_project_details ─────────────────────────────────────────────────────
 
 
 @respx.mock
-def test_fetch_instructions_returns_instructions_field():
+def test_fetch_details_returns_instructions_field():
     respx.get(COPR_PROJECT_URL).mock(
-        return_value=httpx.Response(200, json={"instructions": "Install via dnf."})
+        return_value=httpx.Response(
+            200, json={"instructions": "Install via dnf.", "unlisted_on_hp": False}
+        )
     )
     with httpx.Client() as client:
-        result = fetch_project_instructions(client, "user", "project")
-    assert result == "Install via dnf."
+        instructions, unlisted = fetch_project_details(client, "user", "project")
+    assert instructions == "Install via dnf."
+    assert unlisted is False
 
 
 @respx.mock
-def test_fetch_instructions_returns_empty_when_field_absent():
+def test_fetch_details_returns_empty_when_instructions_absent():
     respx.get(COPR_PROJECT_URL).mock(
         return_value=httpx.Response(200, json={"description": "No instructions key"})
     )
     with httpx.Client() as client:
-        result = fetch_project_instructions(client, "user", "project")
-    assert result == ""
+        instructions, unlisted = fetch_project_details(client, "user", "project")
+    assert instructions == ""
+    assert unlisted is True  # default when field is missing
 
 
 @respx.mock
-def test_fetch_instructions_returns_empty_when_field_is_null():
+def test_fetch_details_returns_empty_when_instructions_null():
     respx.get(COPR_PROJECT_URL).mock(
-        return_value=httpx.Response(200, json={"instructions": None})
+        return_value=httpx.Response(200, json={"instructions": None, "unlisted_on_hp": True})
     )
     with httpx.Client() as client:
-        result = fetch_project_instructions(client, "user", "project")
-    assert result == ""
+        instructions, unlisted = fetch_project_details(client, "user", "project")
+    assert instructions == ""
 
 
 @respx.mock
-def test_fetch_instructions_fails_open_on_404():
-    """A 404 from COPR should not raise — returns "" so the project is not dropped."""
+def test_fetch_details_fails_open_on_404():
+    """A 404 from COPR should not raise — returns safe defaults so the project is not dropped."""
     respx.get(COPR_PROJECT_URL).mock(return_value=httpx.Response(404))
     with patch("ingest.time.sleep"):  # suppress copr_get retry delays
         with httpx.Client() as client:
-            result = fetch_project_instructions(client, "user", "project")
-    assert result == ""
+            instructions, unlisted = fetch_project_details(client, "user", "project")
+    assert instructions == ""
+    assert unlisted is True
 
 
 @respx.mock
-def test_fetch_instructions_fails_open_on_network_error():
-    """A network failure should not raise — returns "" so the project is not dropped."""
+def test_fetch_details_fails_open_on_network_error():
+    """A network failure should not raise — returns safe defaults so the project is not dropped."""
     respx.get(COPR_PROJECT_URL).mock(side_effect=httpx.ConnectError("refused"))
     with patch("ingest.time.sleep"):
         with httpx.Client() as client:
-            result = fetch_project_instructions(client, "user", "project")
-    assert result == ""
+            instructions, unlisted = fetch_project_details(client, "user", "project")
+    assert instructions == ""
+    assert unlisted is True
 
 
 # ── Two-phase filter in main() ────────────────────────────────────────────────
@@ -168,7 +174,7 @@ def test_noise_description_skipped_without_instructions_call():
     """Phase 1 match: instructions are never fetched for obvious noise."""
     with (
         patch("ingest.iter_projects", return_value=iter([PACKIT_PROJECT])),
-        patch("ingest.fetch_project_instructions") as mock_fetch,
+        patch("ingest.fetch_project_details") as mock_fetch,
         patch("ingest.iter_packages", side_effect=lambda *a: iter([])),
         patch("ingest.flush_batch") as mock_flush,
     ):
@@ -183,8 +189,8 @@ def test_disguised_noise_skipped_on_instructions_match():
     with (
         patch("ingest.iter_projects", return_value=iter([DISGUISED_NOISE_PROJECT])),
         patch(
-            "ingest.fetch_project_instructions",
-            return_value="Everybody else should avoid this repo.",
+            "ingest.fetch_project_details",
+            return_value=("Everybody else should avoid this repo.", True),
         ),
         patch("ingest.iter_packages", side_effect=lambda *a: iter([])),
         patch("ingest.flush_batch") as mock_flush,
@@ -199,8 +205,8 @@ def test_legitimate_project_is_indexed():
     with (
         patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
         patch(
-            "ingest.fetch_project_instructions",
-            return_value="Install with: sudo dnf install mypkg",
+            "ingest.fetch_project_details",
+            return_value=("Install with: sudo dnf install mypkg", False),
         ),
         patch("ingest.iter_packages", side_effect=lambda *a: iter([SAMPLE_PKG])),
         patch("ingest.flush_batch") as mock_flush,
@@ -214,7 +220,7 @@ def test_empty_description_skipped_without_instructions_call():
     """Pre-existing guard: empty-description projects bypass both noise checks."""
     with (
         patch("ingest.iter_projects", return_value=iter([EMPTY_DESC_PROJECT])),
-        patch("ingest.fetch_project_instructions") as mock_fetch,
+        patch("ingest.fetch_project_details") as mock_fetch,
         patch("ingest.iter_packages", side_effect=lambda *a: iter([])),
         patch("ingest.flush_batch") as mock_flush,
     ):
@@ -225,10 +231,10 @@ def test_empty_description_skipped_without_instructions_call():
 
 
 def test_instructions_fetch_error_does_not_drop_legitimate_project():
-    """Fail-open: if the instructions call errors (returns ""), project is indexed."""
+    """Fail-open: if the instructions call errors (returns safe defaults), project is indexed."""
     with (
         patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
-        patch("ingest.fetch_project_instructions", return_value=""),
+        patch("ingest.fetch_project_details", return_value=("", True)),
         patch("ingest.iter_packages", side_effect=lambda *a: iter([SAMPLE_PKG])),
         patch("ingest.flush_batch") as mock_flush,
     ):
@@ -241,14 +247,14 @@ def test_mixed_batch_only_legitimate_project_indexed():
     """All three noise categories are filtered; only the clean project gets through."""
     projects = [PACKIT_PROJECT, LEGITIMATE_PROJECT, DISGUISED_NOISE_PROJECT]
 
-    def instructions_side_effect(client, owner, name):
+    def details_side_effect(client, owner, name):
         if owner == "sneaky-user":
-            return "Everybody else should avoid this repo."
-        return "Valid install instructions."
+            return ("Everybody else should avoid this repo.", True)
+        return ("Valid install instructions.", False)
 
     with (
         patch("ingest.iter_projects", return_value=iter(projects)),
-        patch("ingest.fetch_project_instructions", side_effect=instructions_side_effect),
+        patch("ingest.fetch_project_details", side_effect=details_side_effect),
         patch("ingest.iter_packages", side_effect=lambda *a: iter([SAMPLE_PKG])),
         patch("ingest.flush_batch") as mock_flush,
     ):
