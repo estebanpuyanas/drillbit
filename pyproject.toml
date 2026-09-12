@@ -6,8 +6,6 @@ requires-python = ">=3.12"
 dependencies = [
     "httpx",
     "ramalama",
-    "rich",
-    "textual",
 ]
 
 [dependency-groups]

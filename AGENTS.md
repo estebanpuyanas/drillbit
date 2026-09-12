@@ -14,12 +14,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **sentence-transformers** (`all-MiniLM-L6-v2`) — query embeddings (CPU-only)
 - **ChromaDB** — vector database for pre-indexed package metadata
 - **FastMCP** — MCP server exposing live package metadata tools
-- **Textual** — TUI (runs on host, not containerized)
+- **Go + Bubble Tea** — TUI (runs on host, not containerized)
 
 ## Architecture
 
 ```
-User query (Textual TUI, runs on host)
+User query (Bubble Tea TUI, runs on host)
     ↓  HTTP GET /search?q=...
 backend:8000 (FastAPI)
     ├── sentence-transformers  → embed query (all-MiniLM-L6-v2)
@@ -68,7 +68,8 @@ podman-compose down
 ### Running the TUI
 
 ```bash
-uv run tui.py   # run on host after the stack is up
+make tui       # build and run on host after the stack is up
+make tui-tests # test the Go TUI without containers
 ```
 
 ### Populating ChromaDB
@@ -104,9 +105,10 @@ podman ps -a                                # list all containers
 
 ### Dependency Management
 
-Everything uses **uv**. There are two separate dependency domains:
+The Go TUI uses `tui/go.mod` and `tui/go.sum`; see README.md for host build/run instructions.
+Python uses **uv** in two separate dependency domains:
 
-**Local dev (TUI + tests)**: `pyproject.toml` + `uv.lock` at the repo root:
+**Local Python dev and tests**: `pyproject.toml` + `uv.lock` at the repo root:
 
 ```bash
 # Add to [project.dependencies] or [dependency-groups].dev in pyproject.toml, then:
@@ -142,7 +144,7 @@ uv sync --dev   # creates .venv and installs all deps in one step
 ## Key Files
 
 - `podman-compose.yml`: service definitions, port mappings, named volumes (`ramalama_models`, `chroma_data`)
-- `tui.py`: Textual TUI; calls `GET /search` on `localhost:8000`
+- `tui/`: Go / Bubble Tea host TUI; `model.go` owns views and keybindings, `client.go` owns HTTP search, and `table.go` owns columns and rendering
 - `backend/main.py`: FastAPI `/search` endpoint: vector search, BM25, RRF, COPR enrichment, LLM re-ranking
 - `backend/ingest.py`: one-time COPR → ChromaDB crawl; run inside container to populate the index
 - `backend/chroma.py`: ChromaDB `PersistentClient` init; `packages` collection persisted to `chroma_data` volume
@@ -162,7 +164,6 @@ uv sync --dev   # creates .venv and installs all deps in one step
 Never prefix methods or variables with `_`. Use `func_name` and `var_name`, not `_func_name` or `_var_name`. The underscore convention signals "private/internal / do not call", which creates false impressions about intent and makes the code noisier to read.
 
 **Hard exceptions/framework-mandated names that must not be changed:**
-- **Textual TUI**: `on_*`, `watch_*`, `action_*` method prefixes are required by the framework's event/reactive system
 - **D-Bus `async_callbacks`**: the tuple values must exactly match the corresponding function parameter names (e.g., `async_callbacks=("return_cb", "error_cb")` requires `def Method(self, ..., return_cb, error_cb)`)
 - **pytest dunder fixtures**: `__tracebackhide__`, `__pytest_mark__`, etc.
 - **Python dunder methods**: `__init__`, `__repr__`, `__str__`, etc. — these are obviously fine
@@ -259,3 +260,10 @@ def run_enrich(candidates):
 ```
 
 Note: `asyncio.run()` creates a new event loop each call. For production code that needs to share a loop, use `await` from within an already-running async context instead.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
