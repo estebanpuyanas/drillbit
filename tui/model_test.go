@@ -253,6 +253,26 @@ func TestResizeAndTableScrolling(t *testing.T) {
 	}
 }
 
+func TestSearchingLabelTransitionsAfterThreshold(t *testing.T) {
+	m := press(testModel(), "video")
+	clock := time.Now()
+	m.now = func() time.Time { return clock }
+	m, _ = update(m, keyMsg("enter"))
+	if got := m.searchingLabel(); got != "Searching…" {
+		t.Fatalf("label before threshold = %q, want initial phrasing", got)
+	}
+	if !strings.Contains(m.View(), "Searching…") {
+		t.Fatal("view must show the initial searching phrasing")
+	}
+	clock = clock.Add(reasoningPhaseThreshold)
+	if got := m.searchingLabel(); got != "Reasoning about matches…" {
+		t.Fatalf("label at threshold = %q, want reasoning phrasing", got)
+	}
+	if !strings.Contains(m.View(), "Reasoning about matches…") {
+		t.Fatal("view must show the reasoning phrasing once elapsed time passes the threshold")
+	}
+}
+
 func TestClearCancelsRunningRequest(t *testing.T) {
 	started := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

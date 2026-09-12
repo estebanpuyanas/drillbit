@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -12,6 +13,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
+
+// reasoningPhaseThreshold is how long a search stays in flight before the
+// loading label switches from "Searching…" to a phrasing that signals the
+// LLM re-ranking step, purely as a client-side cosmetic cue.
+const reasoningPhaseThreshold = 4 * time.Second
 
 const searchLabel = "What do you need? Describe it in plain English:"
 const drillbitASCII = `  ██████╗ ██████╗ ██╗██╗      ██╗      ██████╗ ██╗████████╗
@@ -50,6 +56,8 @@ type model struct {
 	columnsOpen    bool
 	requestID      int
 	cancelSearch   context.CancelFunc
+	searchStarted  time.Time
+	now            func() time.Time
 }
 
 func newModel(ctx context.Context, client searchClient) model {
@@ -61,7 +69,7 @@ func newModel(ctx context.Context, client searchClient) model {
 		ctx: ctx, client: client, input: input,
 		spinner: spinner.New(spinner.WithSpinner(spinner.Dot)),
 		table:   viewport.New(1, 1), columns: defaultColumns(),
-		width: 80, height: 24,
+		width: 80, height: 24, now: time.Now,
 	}
 	m.resize()
 	return m
@@ -180,6 +188,7 @@ func (m *model) startSearch(query string) tea.Cmd {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancelSearch = cancel
 	m.loading = true
+	m.searchStarted = m.now()
 	m.status = fmt.Sprintf("Drilling into packages for: \"%s\"...", query)
 	m.statusError = false
 	id, client := m.requestID, m.client
@@ -267,6 +276,17 @@ func (m *model) resize() {
 	m.rebuildTable()
 }
 
+// searchingLabel switches from an initial "searching" phrasing to a later
+// "reasoning" phrasing once the in-flight request has taken long enough that
+// the LLM re-ranking step is the likely cause of the wait. Purely a client-side
+// cosmetic cue; the backend request itself is a single blocking call throughout.
+func (m model) searchingLabel() string {
+	if m.now().Sub(m.searchStarted) >= reasoningPhaseThreshold {
+		return "Reasoning about matches…"
+	}
+	return "Searching…"
+}
+
 func (m model) resultsHeaderView() string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Width(m.table.Width).
 		Render(singleLine(m.resultsHeader))
@@ -296,7 +316,7 @@ func (m model) View() string {
 		}
 		parts := []string{searchLabel, "", input, "", statusStyle.Render(singleLine(m.status))}
 		if m.loading {
-			parts = append(parts, m.spinner.View()+" Searching…")
+			parts = append(parts, m.spinner.View()+" "+m.searchingLabel())
 		}
 		body = lipgloss.JoinVertical(lipgloss.Center, parts...)
 		body = lipgloss.Place(m.width, height, lipgloss.Center, lipgloss.Center, body)

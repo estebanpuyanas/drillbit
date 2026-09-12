@@ -59,7 +59,7 @@ func renderCell(key string, pkg Package) string {
 		value = pkg.COPRProject
 	}
 	if value == "" {
-		return "—"
+		return "N/A"
 	}
 	if key == "copr_description" || key == "reason" {
 		runes := []rune(value)
@@ -75,21 +75,21 @@ func renderDate(value any) string {
 	switch value := value.(type) {
 	case float64:
 		if value == 0 || math.IsNaN(value) || math.IsInf(value, 0) || value >= math.MaxInt64 || value < math.MinInt64 {
-			return "—"
+			return "N/A"
 		}
 		seconds = int64(value)
 	case string:
 		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 		if err != nil {
-			return "—"
+			return "N/A"
 		}
 		seconds = parsed
 	default:
-		return "—"
+		return "N/A"
 	}
 	date := time.Unix(seconds, 0).In(time.Local)
 	if date.Year() < 1 || date.Year() > 9999 {
-		return "—"
+		return "N/A"
 	}
 	return date.Format("2006-01-02")
 }
