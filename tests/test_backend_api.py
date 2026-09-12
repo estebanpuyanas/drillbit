@@ -313,6 +313,23 @@ def test_search_returns_raw_results_when_llm_returns_malformed_json(
     assert isinstance(r.json(), list)
 
 
+def test_search_returns_raw_results_when_llm_returns_json_array_of_strings(
+    chroma_collection, llm_client
+):
+    """LLM returns a valid JSON array of bare strings, not {"name":...} objects."""
+    chroma_collection.count.return_value = 2
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        '["pkg-x", "pkg-y"]'
+    )
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
 def test_search_returns_raw_results_when_llm_raises(chroma_collection, llm_client):
     chroma_collection.count.return_value = 2
     chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])

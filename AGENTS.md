@@ -105,6 +105,8 @@ podman ps -a                                # list all containers
 
 `make containers` (and therefore bare `make`) always runs `podman-compose up -d --build`, so it picks up current source on every run — Podman's build cache keeps a no-op rebuild cheap (layers unaffected by the diff are reused). Never call raw `podman-compose up -d` directly to bring the stack up: it reuses whatever image already exists in the local Podman store with no rebuild attempt and no warning, so code changes since the last build silently never run. `make rebuild` bypasses the cache entirely for a guaranteed from-scratch build. Both targets prune only the specific image IDs they just superseded (`scripts/prune-stale-images.sh`, scoped to `drillbit_backend`/`drillbit_mcp-server`/`drillbit_ramalama`) — never a system-wide `podman image prune`, since this host may run other unrelated container projects.
 
+Note: `make rebuild`'s final `podman-compose up -d` (no `--build`) does not reliably recreate an already-running container with the freshly built image on this stack's podman-compose version (1.6.0) — it can leave the old container process running against the old image even though the image tag was updated. If a container started via `make rebuild` doesn't reflect a just-built change, confirm with `podman inspect <container> --format '{{.Image}}'` against `podman images`, and force it with `podman-compose up -d --force-recreate <service>` if they don't match.
+
 ### Dependency Management
 
 The Go TUI uses `tui/go.mod` and `tui/go.sum`; see README.md for host build/run instructions.
@@ -139,7 +141,8 @@ uv sync --dev   # creates .venv and installs all deps in one step
 
 ## Dependency Notes
 
-- **PyTorch** in the backend is forced CPU-only via `--extra-index-url https://download.pytorch.org/whl/cpu` in `backend/requirements.in`. This keeps the backend image ~1.6GB instead of ~8GB. Do not change this to a GPU build without explicit intent.
+- **PyTorch** in the backend is forced CPU-only via `--extra-index-url https://download.pytorch.org/whl/cpu` in `backend/requirements.in`, pinned to an explicit version (`torch==2.9.1+cpu`) rather than left floating — an unpinned `torch` line drifts to whatever the resolver picks that day and can land on a version missing from the CPU extra index, breaking the build. This keeps the backend image ~1.6GB instead of ~8GB. Do not change this to a GPU build without explicit intent; when bumping the pin, verify the new version resolves via `uv pip compile backend/requirements.in -o /tmp/check.txt` before committing it.
+- `uv pip compile` honors `--extra-index-url` directives written in `requirements.in`, but does not carry that directive into the generated `requirements.txt` — a later `uv pip sync` reading only the compiled file has no index info and will fail to fetch CPU-tagged wheels (e.g. `torch==X+cpu`) from plain PyPI. `backend/Containerfile`'s `uv pip sync` call passes `--extra-index-url` explicitly for this reason; keep that flag if you touch this line. Also: `uv pip sync` needs `--system` to install into the container's system Python (no venv) — omitting it fails with "No virtual environment found" on recent `uv` versions.
 - Python version is pinned to **3.12** via `.python-version` (pyenv).
 - `uv.lock` is committed to the repo. `backend/requirements.txt` and `mcp-server/requirements.txt` are generated inside the container, they are gitignored and never need to exist locally.
 

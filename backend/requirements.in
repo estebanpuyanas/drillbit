@@ -6,6 +6,6 @@ sentence-transformers
 chromadb
 openai
 httpx
-torch
+torch==2.9.1+cpu
 fastmcp
 rank_bm25
