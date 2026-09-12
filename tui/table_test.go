@@ -26,15 +26,15 @@ func TestCellFormatting(t *testing.T) {
 		}
 	}
 	for _, col := range defaultColumns() {
-		if got := renderCell(col.key, Package{}); got != "—" {
-			t.Errorf("missing %s = %q; want em dash", col.key, got)
+		if got := renderCell(col.key, Package{}); got != "N/A" {
+			t.Errorf("missing %s = %q; want N/A", col.key, got)
 		}
 	}
 }
 
 func TestDateFormatting(t *testing.T) {
 	for _, value := range []any{nil, "", "invalid", "1.5", float64(0), float64(1e30), "9999999999999999", true} {
-		if got := renderDate(value); got != "—" {
+		if got := renderDate(value); got != "N/A" {
 			t.Errorf("invalid date %v = %q", value, got)
 		}
 	}
@@ -51,7 +51,7 @@ func TestTableDisplaysMissingFieldsAndPlainText(t *testing.T) {
 	m.packages = []Package{{Name: "first", Reason: "[bold]literal[/bold]"}, {Name: "second", COPRDescription: "text\nnext\x1b[31mred\x1b[0m"}}
 	m.rebuildTable()
 	view := ansi.Strip(m.table.View())
-	if !strings.Contains(view, "—") || !strings.Contains(view, "[bold]literal[/bold]") || !strings.Contains(view, "text nextred") {
+	if !strings.Contains(view, "N/A") || !strings.Contains(view, "[bold]literal[/bold]") || !strings.Contains(view, "text nextred") {
 		t.Fatalf("unexpected table cells:\n%s", view)
 	}
 }
