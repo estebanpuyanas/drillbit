@@ -7,7 +7,7 @@ COPY requirements.in .
 
 # compile and install in one step, correct arch guaranteed
 RUN uv pip compile requirements.in -o requirements.txt && \
-    uv pip sync requirements.txt
+    uv pip sync --system --extra-index-url https://download.pytorch.org/whl/cpu requirements.txt
 
 RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 

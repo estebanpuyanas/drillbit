@@ -8,7 +8,7 @@ COPY requirements.in .
 
 # compile and install in one step, correct arch guaranteed
 RUN uv pip compile requirements.in -o requirements.txt && \
-    uv pip sync requirements.txt
+    uv pip sync --system requirements.txt
 
 COPY . .
 

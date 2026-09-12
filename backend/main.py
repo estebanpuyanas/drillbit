@@ -250,7 +250,11 @@ async def rerank_with_llm(query: str, candidates: list, limit: int) -> list | No
             text = resp.choices[0].message.content.strip()
             match = re.search(r"\[.*\]", text, re.DOTALL)
             if match:
-                return json.loads(match.group())
+                parsed = json.loads(match.group())
+                if isinstance(parsed, list) and all(
+                    isinstance(p, dict) for p in parsed
+                ):
+                    return parsed
         except Exception:
             continue
     return None
