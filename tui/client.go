@@ -34,7 +34,12 @@ func newSearchClient(baseURL string) searchClient {
 	return searchClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http: &http.Client{
-			Timeout: 60 * time.Second,
+			// Backend worst case: RERANK_TIMEOUT (25s) * RERANK_ATTEMPTS (2) = 50s
+			// for re-ranking alone, plus embedding/BM25/COPR enrichment overhead
+			// on top. 120s keeps safe headroom above that so a genuine slow
+			// backend response doesn't get cut off client-side before the
+			// backend's own fallback has a chance to return.
+			Timeout: 120 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
