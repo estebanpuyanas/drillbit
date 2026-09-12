@@ -31,9 +31,6 @@ REQUIRED_FIELDS = {
     "score",
 }
 
-# Fields required in the ChromaDB-empty LLM-only fallback path.
-FALLBACK_FIELDS = {"name", "summary", "copr_project", "reason", "score"}
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -144,8 +141,60 @@ def test_search_fallback_when_chroma_empty(chroma_collection, llm_client):
     results = r.json()
     assert len(results) >= 1
     for item in results:
-        missing = FALLBACK_FIELDS - item.keys()
+        missing = REQUIRED_FIELDS - item.keys()
         assert not missing, f"Fallback result missing fields: {missing}"
+        # Fields COPR/build enrichment never runs for this path — must be
+        # explicitly empty/null, not silently dropped or differently named.
+        assert item["copr_project"] == ""
+        assert item["copr_description"] == ""
+        assert item["version"] == ""
+        assert item["submitted_on"] is None
+        assert item["ended_on"] is None
+        assert item["reason"] == ""
+
+
+def test_search_raw_candidates_when_llm_reranking_fails_share_required_schema(
+    chroma_collection, llm_client
+):
+    """Regression test: when ChromaDB has candidates but LLM re-ranking raises,
+    the raw-candidate fallback must be normalized to the same schema as the
+    happy path — mapping enrichment's "description" key to "copr_description"
+    and always including "reason" (empty), instead of silently returning
+    differently-shaped raw dicts."""
+    chroma_collection.count.return_value = 1
+    chroma_collection.query.return_value = make_chroma_results(["mypkg"])
+    llm_client.chat.completions.create.side_effect = Exception("timeout")
+
+    enriched = [
+        {
+            "name": "mypkg",
+            "summary": "mypkg summary",
+            "copr_project": "user/project",
+            "score": 0.9,
+            "description": "Full COPR project description",
+            "homepage": "https://example.com",
+            "contact": "owner@example.com",
+            "build_state": "succeeded",
+            "submitted_on": 1710000000,
+            "ended_on": 1710000100,
+            "version": "1.2.3",
+        }
+    ]
+    with patch("main.enrich_candidates", side_effect=lambda c: enriched):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    results = r.json()
+    assert len(results) == 1
+    item = results[0]
+    missing = REQUIRED_FIELDS - item.keys()
+    assert not missing, f"Raw-candidate result missing fields: {missing}"
+    assert "description" not in item
+    assert item["copr_description"] == "Full COPR project description"
+    assert item["version"] == "1.2.3"
+    assert item["submitted_on"] == 1710000000
+    assert item["ended_on"] == 1710000100
+    assert item["reason"] == ""
 
 
 def test_search_returns_empty_list_when_chroma_empty_and_llm_fails(
@@ -158,6 +207,20 @@ def test_search_returns_empty_list_when_chroma_empty_and_llm_fails(
 
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_search_logs_when_chroma_empty(chroma_collection, llm_client, capsys):
+    """An empty index must surface clearly instead of silently degrading to
+    name-only LLM suggestions with no explanation."""
+    chroma_collection.count.return_value = 0
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        '[{"name": "kdenlive", "summary": "Non-linear video editor"}]'
+    )
+
+    r = client.get("/search", params={"q": "video editor"})
+
+    assert r.status_code == 200
+    assert "[chroma-empty]" in capsys.readouterr().out
 
 
 # ── /search — LLM re-ranking failure modes ────────────────────────────────────

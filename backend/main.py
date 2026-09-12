@@ -40,6 +40,32 @@ class PackageResult:
     reason: str = ""
 
 
+def to_package_result(base: dict, name: str | None = None, reason: str = "") -> dict:
+    """Build a full PackageResult dict from a raw candidate dict.
+
+    Every /search return path must funnel through this so all three paths
+    (LLM re-ranked, raw candidates, ChromaDB-empty LLM suggestions) yield the
+    same keys, with genuinely unknown fields left empty/null rather than
+    missing or differently named (e.g. "description" -> copr_description).
+    """
+    return dataclasses.asdict(
+        PackageResult(
+            name=name or base.get("name", ""),
+            summary=base.get("summary", ""),
+            copr_project=base.get("copr_project", ""),
+            score=base.get("score", 0.0),
+            version=base.get("version", ""),
+            homepage=base.get("homepage", ""),
+            contact=base.get("contact", ""),
+            copr_description=base.get("description", base.get("copr_description", "")),
+            build_state=base.get("build_state", ""),
+            submitted_on=base.get("submitted_on"),
+            ended_on=base.get("ended_on"),
+            reason=reason,
+        )
+    )
+
+
 def truncate(text: str, max_chars: int) -> str:
     """Truncate text to max_chars, ending at the last complete sentence."""
     if len(text) <= max_chars:
@@ -199,11 +225,18 @@ async def test_llm():
 async def search(q: str, limit: int = 5):
     # Step 1: ChromaDB vector search — pull more candidates than needed for re-ranking
     candidates = []
-    if collection.count() > 0:
+    chroma_count = collection.count()
+    if chroma_count == 0:
+        print(
+            f"[chroma-empty] ChromaDB collection has no packages indexed; "
+            f"skipping vector/BM25 search for query: {q!r}. Run ingest.py to populate it.",
+            flush=True,
+        )
+    else:
         loop = asyncio.get_running_loop()
         raw_embedding = await loop.run_in_executor(None, embedder.encode, q)
         embedding = raw_embedding.tolist()
-        n = min(limit * 3, collection.count())
+        n = min(limit * 3, chroma_count)
         results = collection.query(query_embeddings=[embedding], n_results=n)
         vector_candidates = [
             {
@@ -282,29 +315,12 @@ async def search(q: str, limit: int = 5):
                     if not name:
                         continue
                     base = candidate_map.get(name, {})
-                    results.append(
-                        dataclasses.asdict(
-                            PackageResult(
-                                name=name,
-                                version=base.get("version", ""),
-                                summary=base.get("summary", ""),
-                                copr_project=base.get("copr_project", ""),
-                                copr_description=base.get("description", ""),
-                                homepage=base.get("homepage", ""),
-                                contact=base.get("contact", ""),
-                                build_state=base.get("build_state", ""),
-                                submitted_on=base.get("submitted_on"),
-                                ended_on=base.get("ended_on"),
-                                reason=p.get("reason", ""),
-                                score=base.get("score", 0.0),
-                            )
-                        )
-                    )
+                    results.append(to_package_result(base, name=name, reason=p.get("reason", "")))
                 return results
         except Exception:
             pass
-        # LLM failed — return raw vector results
-        return candidates[:limit]
+        # LLM re-ranking failed — return raw candidates, normalized to the same shape
+        return [to_package_result(c) for c in candidates[:limit]]
 
     # Fallback: ask the LLM for package suggestions when ChromaDB is empty
     try:
@@ -330,13 +346,7 @@ async def search(q: str, limit: int = 5):
         if match:
             pkgs = json.loads(match.group())
             return [
-                {
-                    "name": p["name"],
-                    "summary": p.get("summary", ""),
-                    "copr_project": "",
-                    "reason": "",
-                    "score": 1.0,
-                }
+                to_package_result({"name": p["name"], "summary": p.get("summary", ""), "score": 1.0})
                 for p in pkgs[:limit]
             ]
     except Exception:
