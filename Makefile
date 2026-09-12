@@ -1,4 +1,4 @@
-.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since tests tui
+.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since tests tui tui-build tui-tests
 
 help:
 	@echo "Usage: make [target]"
@@ -12,7 +12,9 @@ help:
 	@echo "  ingest       - Ingest package metadata into ChromaDB (first-time setup only)"
 	@echo "  ingest-dry   - Preview what ingest would index without writing to ChromaDB"
 	@echo "  ingest-since - Re-index packages updated since a date: make ingest-since SINCE=2024-01-01"
-	@echo "  tui          - Run the Text User Interface for interactive querying"
+	@echo "  tui          - Build and run the Go TUI (start the stack first)"
+	@echo "  tui-build    - Build build/drillbit-tui"
+	@echo "  tui-tests    - Run the Go TUI tests"
 
 containers:
 	@echo "Building and starting Podman containers..."
@@ -49,5 +51,11 @@ ingest-since:
 tests:
 	uv run pytest tests/ -v
 
-tui:
-	make containers && python3 tui.py
+tui-build:
+	cd tui && go build -o ../build/drillbit-tui .
+
+tui: tui-build
+	./build/drillbit-tui
+
+tui-tests:
+	cd tui && go test ./...

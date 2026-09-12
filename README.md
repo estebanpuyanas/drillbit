@@ -25,7 +25,7 @@ Built with **Podman**, **RamaLama**, **FastMCP**, and **sentence-transformers**.
 ```
 User query (plain English)
         ↓
-  Textual TUI  (runs on host)
+  Bubble Tea TUI  (runs on host)
         ↓  HTTP GET /search?q=...
   FastAPI backend  (backend:8000)
         ├── sentence-transformers   ← embeds query (all-MiniLM-L6-v2, CPU-only)
@@ -54,7 +54,8 @@ The **TUI runs on the host**, not in a container — it needs direct terminal ac
 
 ## Prerequisites
 
-- **Python 3.12** (via pyenv recommended)
+- **Go 1.24+** (host TUI)
+- **Python 3.12** (via pyenv recommended; Python services and tests)
 - **uv** `pip install uv` or see [uv docs](https://docs.astral.sh/uv/)
 - **Podman** + **podman-compose**
 - **Git**
@@ -174,20 +175,44 @@ curl http://localhost:8001/health        # mcp-server → {"status":"ok"}
 
 ## Running the TUI
 
-The TUI is not containerized. Run it on your host after the stack is up:
+The host-side UI is a Go program built with Bubble Tea. After starting the stack
+with `podman-compose up -d`, run it from the repository root:
 
 ```bash
-uv run tui.py
+make tui
 ```
+
+This builds `build/drillbit-tui` and runs it in your terminal. To build and run
+separately, or run without Make:
+
+```bash
+make tui-build
+./build/drillbit-tui
+
+# Alternatively, from the Go module:
+cd tui
+go run .
+```
+
+The first build downloads Go dependencies. The TUI searches
+`http://localhost:8000` by default; set `BACKEND_URL` to use another backend,
+for example `BACKEND_URL=http://localhost:9000 make tui`. Each search requests
+up to seven packages with a 60-second timeout.
+
+Run the TUI tests with `make tui-tests` (or `cd tui && go test ./...`).
 
 **Key bindings:**
 
 | Key | Action |
 |---|---|
 | Type + Enter | Search |
-| `f1` | Focus search input |
+| `f1` | Focus search input / start a new search from results |
 | `c` | Toggle column picker |
 | `ctrl+l` | Clear results / new search |
+| `Escape` | Close column picker, clear results, or blur search input |
+| `↑` / `↓` | Select a result or a column in the picker |
+| `Space` / `Enter` in picker | Toggle the selected column |
+| `←` / `→` in results | Scroll columns horizontally |
 | `ctrl+q` | Quit |
 
 ---
@@ -210,9 +235,10 @@ After ingest completes, the full pipeline (vector search + BM25 + LLM re-ranking
 
 ## Dependency Management
 
-Everything uses **uv**. There are two separate dependency domains:
+The Go TUI uses `tui/go.mod` and `tui/go.sum`; run Go commands from `tui/`.
+Python dependencies use **uv** in two separate domains:
 
-### Local dev (TUI + tests)
+### Local Python dev and tests
 
 Managed via `pyproject.toml` + `uv.lock` at the repo root.
 
@@ -301,10 +327,15 @@ python3 -c "import ast; ast.parse(open('backend/main.py').read()); print('ok')"
 ```
 drillbit/
 ├── podman-compose.yml        ← service orchestration
-├── pyproject.toml            ← local dev + TUI deps (uv)
+├── pyproject.toml            ← local Python dev + test deps (uv)
 ├── uv.lock                   ← committed lockfile
 ├── ruff.toml                 ← linter config
-├── tui.py                    ← Textual TUI (run on host with: uv run tui.py)
+├── tui/                      ← Go / Bubble Tea host TUI (make tui)
+│   ├── go.mod, go.sum        ← Go module and dependency checksums
+│   ├── main.go               ← terminal entry point
+│   ├── model.go              ← views, focus, keybindings, async search
+│   ├── client.go             ← backend HTTP search client
+│   └── table.go              ← columns and cell rendering
 ├── .python-version           ← pyenv: pins Python 3.12
 ├── .venv/                    ← local virtual environment (gitignored)
 │
