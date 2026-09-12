@@ -338,6 +338,7 @@ def test_search_returns_raw_results_when_llm_returns_json_array(
 
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
 
 
 def test_search_returns_raw_results_when_llm_returns_names_with_no_reason(
@@ -355,6 +356,7 @@ def test_search_returns_raw_results_when_llm_returns_names_with_no_reason(
 
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
 
 
 def test_search_returns_raw_results_when_llm_raises(chroma_collection, llm_client):

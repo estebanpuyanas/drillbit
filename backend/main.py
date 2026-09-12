@@ -226,15 +226,20 @@ def parse_ranked_lines(text: str) -> list[dict]:
     Tolerates leading list markers ("-", "*", "1.") a model adds despite
     being told not to. Lines with no colon, or an empty name/reason, are
     skipped rather than treated as a hard failure — a handful of stray lines
-    shouldn't sink an otherwise-good response.
+    shouldn't sink an otherwise-good response. A reply that reverts to the old
+    JSON array-of-objects shape is rejected outright rather than colon-split,
+    since that would extract garbage names (e.g. '[{"name') that silently fail
+    to match any real candidate downstream instead of triggering a retry.
     """
+    if text.strip().startswith(("[", "{")):
+        return []
     parsed = []
     for line in text.splitlines():
         line = re.sub(r"^[\s*-]*(?:\d+[.)])?\s*", "", line.strip())
         if ":" not in line:
             continue
         name, _, reason = line.partition(":")
-        name = name.strip().strip('"`')
+        name = name.strip().strip('"`*')
         reason = reason.strip()
         if name and reason:
             parsed.append({"name": name, "reason": reason})
