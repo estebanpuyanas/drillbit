@@ -74,7 +74,7 @@ make tui-tests # test the Go TUI without containers
 
 ### Populating ChromaDB
 
-ChromaDB starts empty. Without a populated index the backend falls back to live COPR keyword search (no descriptions or reasons in results). Run the ingest script inside the backend container:
+ChromaDB starts empty. Without a populated index the backend falls back to live COPR keyword search (see README's "Populating the Search Index" section for what fallback results include). Run the ingest script inside the backend container:
 
 ```bash
 podman exec -it drillbit_backend_1 python ingest.py
