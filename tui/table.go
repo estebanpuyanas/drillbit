@@ -63,8 +63,8 @@ func renderCell(key string, pkg Package) string {
 	}
 	if key == "copr_description" || key == "reason" {
 		runes := []rune(value)
-		if len(runes) > 80 {
-			value = string(runes[:80]) + "…"
+		if len(runes) > 40 {
+			value = string(runes[:40]) + "…"
 		}
 	}
 	return singleLine(value)

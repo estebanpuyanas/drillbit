@@ -10,13 +10,13 @@ import (
 
 func TestCellFormatting(t *testing.T) {
 	pkg := Package{
-		Name: "editor", COPRDescription: strings.Repeat("界", 81),
-		Reason: strings.Repeat("é", 80), Version: "2.0", COPRProject: "owner/editor",
+		Name: "editor", COPRDescription: strings.Repeat("界", 41),
+		Reason: strings.Repeat("é", 40), Version: "2.0", COPRProject: "owner/editor",
 		SubmittedOn: float64(1700000000), EndedOn: "1700001000",
 	}
 	for _, test := range []struct{ key, want string }{
-		{"name", "editor"}, {"copr_description", strings.Repeat("界", 80) + "…"},
-		{"reason", strings.Repeat("é", 80)}, {"version", "2.0"},
+		{"name", "editor"}, {"copr_description", strings.Repeat("界", 40) + "…"},
+		{"reason", strings.Repeat("é", 40)}, {"version", "2.0"},
 		{"copr_project", "owner/editor"},
 		{"submitted_on", time.Unix(1700000000, 0).In(time.Local).Format("2006-01-02")},
 		{"ended_on", time.Unix(1700001000, 0).In(time.Local).Format("2006-01-02")},
