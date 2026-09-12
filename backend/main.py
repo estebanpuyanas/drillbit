@@ -220,7 +220,7 @@ async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
     return merged
 
 
-def _contains_json_reversion(text: str) -> bool:
+def contains_json_reversion(text: str) -> bool:
     """Detect a reply that reverted to the old JSON array/object shape.
 
     Extracts the largest bracketed/braced region anywhere in the text (prose
@@ -253,7 +253,7 @@ def parse_ranked_lines(text: str) -> list[dict]:
     garbage names that silently fail to match any real candidate downstream
     instead of triggering a retry.
     """
-    if _contains_json_reversion(text):
+    if contains_json_reversion(text):
         return []
     parsed = []
     for line in text.splitlines():
