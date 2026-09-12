@@ -15,7 +15,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func testModel() model {
+func testModel(t *testing.T) model {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	return newModel(context.Background(), newSearchClient("http://localhost:8000"))
 }
 
@@ -54,7 +56,7 @@ func withResults(m model) model {
 }
 
 func TestSearchInputFocusAndClear(t *testing.T) {
-	m := testModel()
+	m := testModel(t)
 	if !m.input.Focused() || !strings.Contains(m.View(), searchLabel) || m.showingResults {
 		t.Fatal("initial view must show and focus the labeled search input")
 	}
@@ -99,6 +101,7 @@ func TestSubmitThroughHTTPToResults(t *testing.T) {
 		fmt.Fprint(w, `[{"name":"editor","reason":"Edits video"}]`)
 	}))
 	defer server.Close()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := newModel(context.Background(), newSearchClient(server.URL))
 	m = press(m, "  video editor  ")
 	m, cmd := update(m, keyMsg("enter"))
@@ -118,7 +121,7 @@ func TestSubmitThroughHTTPToResults(t *testing.T) {
 }
 
 func TestResultsKeysAndColumnPersistence(t *testing.T) {
-	m := withResults(testModel())
+	m := withResults(testModel(t))
 	if len(m.visibleColumns()) != 3 || !strings.Contains(m.resultsHeader, "Found 2 packages") {
 		t.Fatal("default columns or result count changed")
 	}
@@ -156,7 +159,7 @@ func TestResultsKeysAndColumnPersistence(t *testing.T) {
 }
 
 func TestAllColumnsCanBeToggled(t *testing.T) {
-	m := press(withResults(testModel()), "c")
+	m := press(withResults(testModel(t)), "c")
 	for i := range m.columns {
 		if m.columns[i].selected {
 			m = press(m, " ")
@@ -196,7 +199,7 @@ func TestSearchErrorsAndEmptyResults(t *testing.T) {
 		{errors.New("Cannot reach backend at localhost:8000"), "Cannot reach backend"},
 		{errors.New("Error: invalid JSON"), "Error: invalid JSON"},
 	} {
-		m := testModel()
+		m := testModel(t)
 		m.loading = true
 		m, _ = update(m, searchResultMsg{id: m.requestID, query: "video", err: test.err})
 		if m.loading || m.showingResults || !m.statusError || !m.input.Focused() || !strings.Contains(ansi.Strip(m.View()), test.want) {
@@ -206,7 +209,7 @@ func TestSearchErrorsAndEmptyResults(t *testing.T) {
 }
 
 func TestSupersededAndClearedSearchesIgnoreLateResponses(t *testing.T) {
-	m := press(testModel(), "first")
+	m := press(testModel(t), "first")
 	m, _ = update(m, keyMsg("enter"))
 	firstID := m.requestID
 	m.input.SetValue("second")
@@ -224,7 +227,7 @@ func TestSupersededAndClearedSearchesIgnoreLateResponses(t *testing.T) {
 }
 
 func TestResizeAndTableScrolling(t *testing.T) {
-	m := testModel()
+	m := testModel(t)
 	packages := make([]Package, 7)
 	for i := range packages {
 		packages[i] = Package{Name: fmt.Sprintf("package%d", i), COPRDescription: strings.Repeat("界", 80), Reason: "reason"}
@@ -258,7 +261,7 @@ func TestResizeAndTableScrolling(t *testing.T) {
 }
 
 func TestSearchingLabelTransitionsAfterThreshold(t *testing.T) {
-	m := press(testModel(), "video")
+	m := press(testModel(t), "video")
 	clock := time.Now()
 	m.now = func() time.Time { return clock }
 	m, _ = update(m, keyMsg("enter"))
@@ -286,6 +289,7 @@ func TestClearCancelsRunningRequest(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := press(newModel(ctx, newSearchClient(server.URL)), "video")
 	m, cmd := update(m, keyMsg("enter"))
 	responses := make(chan searchResultMsg, 1)
@@ -313,5 +317,87 @@ func TestClearCancelsRunningRequest(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("clearing did not cancel the HTTP request")
+	}
+}
+
+func TestSearchHistoryRecallAndFooterHint(t *testing.T) {
+	m := testModel(t)
+	if !strings.Contains(ansi.Strip(m.View()), "History") {
+		t.Fatal("search view footer must mention history recall")
+	}
+	m = press(m, "video editor")
+	m, _ = update(m, keyMsg("enter"))
+	m, _ = update(m, searchResultMsg{id: m.requestID, packages: []Package{{Name: "editor"}}})
+	m = press(m, "ctrl+l")
+	m = press(m, "screen recorder")
+	m, _ = update(m, keyMsg("enter"))
+	m, _ = update(m, searchResultMsg{id: m.requestID, packages: []Package{{Name: "recorder"}}})
+	m = press(m, "ctrl+l")
+
+	m = press(m, "up")
+	if m.input.Value() != "screen recorder" {
+		t.Fatalf("first up = %q, want most recent query", m.input.Value())
+	}
+	m = press(m, "up")
+	if m.input.Value() != "video editor" {
+		t.Fatalf("second up = %q, want older query", m.input.Value())
+	}
+	m = press(m, "up")
+	if m.input.Value() != "video editor" {
+		t.Fatal("up must stop at the oldest entry")
+	}
+	m = press(m, "down")
+	if m.input.Value() != "screen recorder" {
+		t.Fatal("down must walk back toward the newest entry")
+	}
+	m = press(m, "down")
+	if m.input.Value() != "" || m.historyIndex != -1 {
+		t.Fatal("down past the newest entry must restore the in-progress draft and exit browsing")
+	}
+}
+
+func TestSearchHistoryPreservesDraftWhileBrowsing(t *testing.T) {
+	m := testModel(t)
+	m = press(m, "first query")
+	m, _ = update(m, keyMsg("enter"))
+	m, _ = update(m, searchResultMsg{id: m.requestID, packages: []Package{{Name: "x"}}})
+	m = press(m, "ctrl+l")
+	m = press(m, "partial")
+	m = press(m, "up")
+	if m.input.Value() != "first query" {
+		t.Fatalf("up = %q, want recalled entry", m.input.Value())
+	}
+	m = press(m, "down")
+	if m.input.Value() != "partial" {
+		t.Fatalf("down past newest = %q, want preserved draft", m.input.Value())
+	}
+}
+
+func TestSearchHistoryEditingRecalledEntryResetsBrowsing(t *testing.T) {
+	m := testModel(t)
+	m = press(m, "first query")
+	m, _ = update(m, keyMsg("enter"))
+	m, _ = update(m, searchResultMsg{id: m.requestID, packages: []Package{{Name: "x"}}})
+	m = press(m, "ctrl+l")
+	m = press(m, "up")
+	if m.input.Value() != "first query" || m.historyIndex == -1 {
+		t.Fatal("up must recall the entry and enter browsing mode")
+	}
+	m = press(m, "!")
+	if m.historyIndex != -1 {
+		t.Fatal("editing a recalled entry must exit history-browsing mode")
+	}
+}
+
+func TestSearchHistoryPersistsAcrossRestart(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	first := newModel(context.Background(), newSearchClient("http://localhost:8000"))
+	first = press(first, "video editor")
+	first, _ = update(first, keyMsg("enter"))
+
+	second := newModel(context.Background(), newSearchClient("http://localhost:8000"))
+	second = press(second, "up")
+	if second.input.Value() != "video editor" {
+		t.Fatalf("recalled query after restart = %q, want %q", second.input.Value(), "video editor")
 	}
 }
