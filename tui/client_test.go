@@ -24,7 +24,7 @@ func TestSearchRequestAndResponse(t *testing.T) {
 	}))
 	defer server.Close()
 	client := newSearchClient(server.URL + "/")
-	if client.http.Timeout != 60*time.Second {
+	if client.http.Timeout != 120*time.Second {
 		t.Fatalf("request timeout = %v", client.http.Timeout)
 	}
 	packages, err := client.search(context.Background(), query)

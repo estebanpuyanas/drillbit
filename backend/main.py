@@ -17,7 +17,12 @@ embedder = SentenceTransformer("all-MiniLM-L6-v2")
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
 CONFIDENCE_THRESHOLD = 0.40  # top vector score below this triggers live COPR fallback
 RERANK_ATTEMPTS = 2  # one retry on top of the initial re-ranking call
-RERANK_TIMEOUT = 10.0  # seconds per attempt
+# llama3.2:3b on CPU (RamaLama) measured 5.7-9.8s for a realistic ~15-candidate
+# re-rank prompt and ~19s at 30 candidates; 10s was clipping normal-length
+# calls before they could finish. 25s keeps real generations comfortably
+# inside the budget while still bounding /search's worst case (both attempts
+# failing) to under a minute.
+RERANK_TIMEOUT = 25.0  # seconds per attempt
 RAW_FALLBACK_REASON = (
     "Matched by local keyword/semantic search ranking (score {score:.2f}); "
     "LLM reasoning was unavailable for this result."
@@ -215,12 +220,68 @@ async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
     return merged
 
 
+def contains_json_reversion(text: str) -> bool:
+    """Detect a reply that reverted to the old JSON array/object shape.
+
+    Extracts the largest bracketed/braced region anywhere in the text (prose
+    preamble or not) and checks whether it parses as a JSON list or dict.
+    This is a structural check rather than a character-level one, so it
+    catches single-line JSON, prose-prefixed JSON, and pretty-printed
+    multi-line JSON alike — any shape the model reverts to — instead of
+    needing a new special case each time a new JSON formatting variant shows
+    up in practice.
+    """
+    match = re.search(r"[\[{].*[\]}]", text, re.DOTALL)
+    if not match:
+        return False
+    try:
+        parsed = json.loads(match.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return False
+    return isinstance(parsed, list | dict)
+
+
+def parse_ranked_lines(text: str) -> list[dict]:
+    """Parse "package-name: reason" lines into `[{"name", "reason"}]` dicts.
+
+    Tolerates leading list markers ("-", "*", "1.") a model adds despite
+    being told not to. Lines with no colon, or an empty name/reason, are
+    skipped rather than treated as a hard failure — a handful of stray lines
+    shouldn't sink an otherwise-good response. A reply that reverts to the old
+    JSON array-of-objects shape (in any formatting) is rejected outright
+    rather than salvaged via colon-splitting, since that would extract
+    garbage names that silently fail to match any real candidate downstream
+    instead of triggering a retry.
+    """
+    if contains_json_reversion(text):
+        return []
+    parsed = []
+    for line in text.splitlines():
+        line = re.sub(r"^[\s*-]*(?:\d+[.)])?\s*", "", line.strip())
+        if ":" not in line:
+            continue
+        name, _, reason = line.partition(":")
+        name = name.strip().strip('"`*')
+        reason = reason.strip()
+        if name and reason:
+            parsed.append({"name": name, "reason": reason})
+    return parsed
+
+
 async def rerank_with_llm(query: str, candidates: list, limit: int) -> list | None:
     """Ask the LLM to pick and explain the best matches, retrying on failure.
 
-    Returns the parsed `[{"name":..., "reason":...}]` list, or None if every
-    attempt failed to produce a valid JSON array (timeout, exception, or
-    unparseable response).
+    Asks for one plain "package-name: reason" line per result rather than a
+    JSON array of objects. Measured against the real RamaLama-served
+    llama3.2:3b, the JSON-object-array format was rejected on nearly every
+    call because the model kept flattening it into a bare list of strings
+    (that shape passes `json.loads` but isn't the required schema, so it
+    silently failed validation on every attempt, retry included, since a
+    retry with an identical prompt just reproduces the identical mistake).
+    The line format mirrors how candidates are already listed in the prompt
+    ("name: summary") and was reliable in repeated live testing. Returns the
+    parsed `[{"name":..., "reason":...}]` list, or None if every attempt
+    failed to produce at least one well-formed line.
     """
     candidate_list = "\n".join(
         f"{i + 1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
@@ -231,13 +292,17 @@ async def rerank_with_llm(query: str, candidates: list, limit: int) -> list | No
             "role": "user",
             "content": (
                 f'A user wants: "{query}"\n\n'
-                f"Choose the {limit} most relevant packages from this list and return them "
-                f'as a JSON array in order of relevance: [{{"name":"pkg-name","reason":"one sentence why"}}]\n\n'
+                f"From this numbered list of candidate packages, choose the {limit} "
+                "most relevant, ordered from most to least relevant. Reply with "
+                "EXACTLY one line per package, formatted as:\n"
+                "package-name: one sentence reason\n\n"
+                "No JSON, no markdown, no numbering, no extra commentary — just "
+                "the plain lines.\n\n"
                 f"{candidate_list}"
             ),
         },
     ]
-    for _ in range(RERANK_ATTEMPTS):
+    for attempt in range(RERANK_ATTEMPTS):
         try:
             resp = await asyncio.wait_for(
                 llm.chat.completions.create(
@@ -247,16 +312,45 @@ async def rerank_with_llm(query: str, candidates: list, limit: int) -> list | No
                 ),
                 timeout=RERANK_TIMEOUT,
             )
-            text = resp.choices[0].message.content.strip()
-            match = re.search(r"\[.*\]", text, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                if isinstance(parsed, list) and all(
-                    isinstance(p, dict) for p in parsed
-                ):
-                    return parsed
-        except Exception:
+        except TimeoutError:
+            print(
+                f"[rerank] attempt {attempt + 1}/{RERANK_ATTEMPTS} timed out "
+                f"after {RERANK_TIMEOUT}s",
+                flush=True,
+            )
             continue
+        except Exception as e:
+            print(
+                f"[rerank] attempt {attempt + 1}/{RERANK_ATTEMPTS} raised "
+                f"{type(e).__name__}: {e}",
+                flush=True,
+            )
+            continue
+
+        text = resp.choices[0].message.content.strip()
+        parsed = parse_ranked_lines(text)
+        if parsed:
+            return parsed
+
+        print(
+            f"[rerank] attempt {attempt + 1}/{RERANK_ATTEMPTS} returned no "
+            f'parseable "name: reason" lines: {text[:200]!r}',
+            flush=True,
+        )
+        if attempt < RERANK_ATTEMPTS - 1:
+            messages = [
+                *messages[:2],
+                {"role": "assistant", "content": text},
+                {
+                    "role": "user",
+                    "content": (
+                        "That reply didn't follow the required format. Reply "
+                        'with ONLY plain lines shaped exactly like "package-name: '
+                        'one sentence reason" — one per package, no JSON, no '
+                        "markdown, no other text."
+                    ),
+                },
+            ]
     return None
 
 

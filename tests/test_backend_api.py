@@ -6,7 +6,6 @@ via the fixtures in conftest.py and unittest.mock.patch.  No containers
 need to be running.
 """
 
-import json
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -79,7 +78,7 @@ def test_search_returns_required_schema(chroma_collection, llm_client):
         ["pkg-a", "pkg-b", "pkg-c"]
     )
     llm_client.chat.completions.create.return_value = make_llm_response(
-        '[{"name": "pkg-a", "reason": "Best match for your query"}]'
+        "pkg-a: Best match for your query"
     )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
@@ -98,10 +97,8 @@ def test_search_respects_limit(chroma_collection, llm_client):
     names = [f"pkg-{i}" for i in range(9)]
     chroma_collection.count.return_value = 9
     chroma_collection.query.return_value = make_chroma_results(names)
-    ranked = [{"name": n, "reason": "ok"} for n in names[:3]]
-    llm_client.chat.completions.create.return_value = make_llm_response(
-        json.dumps(ranked)
-    )
+    ranked_lines = "\n".join(f"{n}: ok" for n in names[:3])
+    llm_client.chat.completions.create.return_value = make_llm_response(ranked_lines)
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
         r = client.get("/search", params={"q": "editor", "limit": 3})
@@ -114,7 +111,7 @@ def test_search_score_is_numeric(chroma_collection, llm_client):
     chroma_collection.count.return_value = 1
     chroma_collection.query.return_value = make_chroma_results(["mypkg"])
     llm_client.chat.completions.create.return_value = make_llm_response(
-        '[{"name": "mypkg", "reason": "it works"}]'
+        "mypkg: it works"
     )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
@@ -215,7 +212,7 @@ def test_search_retries_rerank_and_recovers_reason_after_transient_failure(
     chroma_collection.query.return_value = make_chroma_results(["mypkg"])
     llm_client.chat.completions.create.side_effect = [
         Exception("transient timeout"),
-        make_llm_response('[{"name": "mypkg", "reason": "Recovered after retry"}]'),
+        make_llm_response("mypkg: Recovered after retry"),
     ]
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
@@ -228,6 +225,37 @@ def test_search_retries_rerank_and_recovers_reason_after_transient_failure(
     assert llm_client.chat.completions.create.call_count == 2
 
 
+def test_search_retries_rerank_after_schema_mismatch_and_recovers_reason(
+    chroma_collection, llm_client
+):
+    """A response with no parseable "name: reason" lines (e.g. plain prose,
+    or the model reverting to a JSON array of bare strings) must be retried
+    with a corrective follow-up rather than accepted as a genuine re-ranking,
+    or given up on immediately."""
+    chroma_collection.count.return_value = 1
+    chroma_collection.query.return_value = make_chroma_results(["mypkg"])
+    llm_client.chat.completions.create.side_effect = [
+        make_llm_response('["mypkg", "a description, not a reason"]'),
+        make_llm_response("mypkg: Recovered after retry"),
+    ]
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    results = r.json()
+    assert len(results) == 1
+    assert results[0]["reason"] == "Recovered after retry"
+    assert llm_client.chat.completions.create.call_count == 2
+    # The second attempt's messages must include the first (bad) reply plus
+    # a corrective instruction, not a byte-identical resend of the prompt.
+    second_call_messages = llm_client.chat.completions.create.call_args_list[1].kwargs[
+        "messages"
+    ]
+    assert second_call_messages[-2]["role"] == "assistant"
+    assert second_call_messages[-1]["role"] == "user"
+
+
 def test_search_drops_ranked_name_with_no_matching_candidate(
     chroma_collection, llm_client
 ):
@@ -236,8 +264,7 @@ def test_search_drops_ranked_name_with_no_matching_candidate(
     chroma_collection.count.return_value = 1
     chroma_collection.query.return_value = make_chroma_results(["mypkg"])
     llm_client.chat.completions.create.return_value = make_llm_response(
-        '[{"name": "mypkg", "reason": "Real candidate"}, '
-        '{"name": "not-a-real-candidate", "reason": "hallucinated"}]'
+        "mypkg: Real candidate\nnot-a-real-candidate: hallucinated"
     )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
@@ -278,10 +305,10 @@ def test_search_logs_when_chroma_empty(chroma_collection, llm_client, capsys):
 # ── /search — LLM re-ranking failure modes ────────────────────────────────────
 
 
-def test_search_returns_raw_results_when_llm_returns_no_json_array(
+def test_search_returns_raw_results_when_llm_returns_prose(
     chroma_collection, llm_client
 ):
-    """LLM responds with prose — no JSON array extractable."""
+    """LLM responds with prose — no "name: reason" lines extractable."""
     chroma_collection.count.return_value = 2
     chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
     llm_client.chat.completions.create.return_value = make_llm_response(
@@ -296,14 +323,14 @@ def test_search_returns_raw_results_when_llm_returns_no_json_array(
     assert len(r.json()) >= 1
 
 
-def test_search_returns_raw_results_when_llm_returns_malformed_json(
+def test_search_returns_raw_results_when_llm_returns_json_array(
     chroma_collection, llm_client
 ):
-    """LLM returns a bracket-wrapped string that isn't valid JSON."""
+    """LLM reverts to a JSON array instead of the requested plain lines."""
     chroma_collection.count.return_value = 2
     chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
     llm_client.chat.completions.create.return_value = make_llm_response(
-        "[not valid json]"
+        '[{"name": "pkg-x", "reason": "great"}]'
     )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
@@ -311,16 +338,17 @@ def test_search_returns_raw_results_when_llm_returns_malformed_json(
 
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
 
 
-def test_search_returns_raw_results_when_llm_returns_json_array_of_strings(
+def test_search_returns_raw_results_when_llm_returns_prose_prefixed_json(
     chroma_collection, llm_client
 ):
-    """LLM returns a valid JSON array of bare strings, not {"name":...} objects."""
+    """LLM prefixes a JSON array with prose commentary instead of plain lines."""
     chroma_collection.count.return_value = 2
     chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
     llm_client.chat.completions.create.return_value = make_llm_response(
-        '["pkg-x", "pkg-y"]'
+        'Here are the results:\n[{"name": "pkg-x", "reason": "great"}]'
     )
 
     with patch("main.enrich_candidates", side_effect=lambda c: c):
@@ -328,6 +356,44 @@ def test_search_returns_raw_results_when_llm_returns_json_array_of_strings(
 
     assert r.status_code == 200
     assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
+
+
+def test_search_returns_raw_results_when_llm_returns_pretty_printed_json(
+    chroma_collection, llm_client
+):
+    """LLM prefixes prose before a pretty-printed, one-key-per-line JSON object."""
+    chroma_collection.count.return_value = 2
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        'Here are the results:\n{\n "name": "pkg-x",\n'
+        ' "reason": "great pick for this"\n}'
+    )
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
+
+
+def test_search_returns_raw_results_when_llm_returns_names_with_no_reason(
+    chroma_collection, llm_client
+):
+    """LLM returns "name:" lines with an empty reason after the colon."""
+    chroma_collection.count.return_value = 2
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        "pkg-x:\npkg-y:"
+    )
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
 
 
 def test_search_returns_raw_results_when_llm_raises(chroma_collection, llm_client):
