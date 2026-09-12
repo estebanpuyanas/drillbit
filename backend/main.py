@@ -1,15 +1,15 @@
+import asyncio
 import dataclasses
 import json
 import re
-import asyncio
 
 import httpx
+from bm25 import bm25_search, reciprocal_rank_fusion
+from chroma import collection
 from fastapi import FastAPI
 from openai import AsyncOpenAI
+from prompt import QUERY_EXPANSION_PROMPT, SYSTEM_PROMPT
 from sentence_transformers import SentenceTransformer
-from prompt import SYSTEM_PROMPT, QUERY_EXPANSION_PROMPT
-from chroma import collection
-from bm25 import bm25_search, reciprocal_rank_fusion
 
 app = FastAPI()
 llm = AsyncOpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
@@ -195,7 +195,9 @@ async def search_copr_live(keyword: str, limit: int = 10) -> list[dict]:
 async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
     """Expand query to keywords and search COPR live, deduplicating across keywords."""
     keywords = await expand_query(query)
-    result_sets = await asyncio.gather(*(search_copr_live(kw, limit=limit) for kw in keywords))
+    result_sets = await asyncio.gather(
+        *(search_copr_live(kw, limit=limit) for kw in keywords)
+    )
     seen: set[tuple[str, str]] = set()
     merged = []
     for results in result_sets:
@@ -271,7 +273,9 @@ async def search(q: str, limit: int = 5):
         )
         mcp_hits = await mcp_fallback_search(q, limit=limit * 2)
         local_keys = {(c["name"], c["copr_project"]) for c in candidates}
-        new_hits = [h for h in mcp_hits if (h["name"], h["copr_project"]) not in local_keys]
+        new_hits = [
+            h for h in mcp_hits if (h["name"], h["copr_project"]) not in local_keys
+        ]
         candidates = candidates + new_hits
 
     # Step 3: Enrich candidates with live COPR metadata
@@ -315,7 +319,9 @@ async def search(q: str, limit: int = 5):
                     if not name:
                         continue
                     base = candidate_map.get(name, {})
-                    results.append(to_package_result(base, name=name, reason=p.get("reason", "")))
+                    results.append(
+                        to_package_result(base, name=name, reason=p.get("reason", ""))
+                    )
                 return results
         except Exception:
             pass
@@ -346,7 +352,9 @@ async def search(q: str, limit: int = 5):
         if match:
             pkgs = json.loads(match.group())
             return [
-                to_package_result({"name": p["name"], "summary": p.get("summary", ""), "score": 1.0})
+                to_package_result(
+                    {"name": p["name"], "summary": p.get("summary", ""), "score": 1.0}
+                )
                 for p in pkgs[:limit]
             ]
     except Exception:
