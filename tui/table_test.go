@@ -47,7 +47,7 @@ func TestDateFormatting(t *testing.T) {
 }
 
 func TestTableDisplaysMissingFieldsAndPlainText(t *testing.T) {
-	m := testModel()
+	m := testModel(t)
 	m.packages = []Package{{Name: "first", Reason: "[bold]literal[/bold]"}, {Name: "second", COPRDescription: "text\nnext\x1b[31mred\x1b[0m"}}
 	m.rebuildTable()
 	view := ansi.Strip(m.table.View())

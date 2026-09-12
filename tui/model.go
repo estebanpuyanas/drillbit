@@ -58,6 +58,9 @@ type model struct {
 	cancelSearch   context.CancelFunc
 	searchStarted  time.Time
 	now            func() time.Time
+	history        History
+	historyIndex   int
+	historyDraft   string
 }
 
 func newModel(ctx context.Context, client searchClient) model {
@@ -65,11 +68,14 @@ func newModel(ctx context.Context, client searchClient) model {
 	input.Prompt = ""
 	input.Placeholder = `e.g. "a tool for editing video files" or "screen recorder"`
 	input.Focus()
+	history := newHistory()
+	history.load()
 	m := model{
 		ctx: ctx, client: client, input: input,
 		spinner: spinner.New(spinner.WithSpinner(spinner.Dot)),
 		table:   viewport.New(1, 1), columns: defaultColumns(),
 		width: 80, height: 24, now: time.Now,
+		history: history, historyIndex: -1,
 	}
 	m.resize()
 	return m
@@ -147,6 +153,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmd := m.input.Focus()
 				return m, cmd
 			}
+		case "up", "down":
+			if !m.showingResults {
+				m.navigateHistory(msg.String())
+				return m, nil
+			}
 		case "c":
 			if m.showingResults {
 				m.columnsOpen = !m.columnsOpen
@@ -167,10 +178,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateResultsKey(msg.String())
 			return m, nil
 		}
+		// Any other key reaching here edits the input directly (e.g. "c" or a
+		// typed rune); leaving history-recall mode keeps the recalled entry
+		// from silently reappearing on a later up/down press.
+		m.historyIndex = -1
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
+}
+
+// navigateHistory recalls the previous/next stored query into the search
+// input, shell-history style. "up" walks toward older entries; "down" walks
+// back toward the newest, restoring the in-progress draft once past it.
+func (m *model) navigateHistory(direction string) {
+	entries := m.history.entries
+	if direction == "up" {
+		if len(entries) == 0 {
+			return
+		}
+		if m.historyIndex == -1 {
+			m.historyDraft = m.input.Value()
+			m.historyIndex = len(entries) - 1
+		} else if m.historyIndex > 0 {
+			m.historyIndex--
+		}
+		m.setInputFromHistory(entries[m.historyIndex])
+		return
+	}
+	if m.historyIndex == -1 {
+		return
+	}
+	m.historyIndex++
+	if m.historyIndex >= len(entries) {
+		m.historyIndex = -1
+		m.setInputFromHistory(m.historyDraft)
+		return
+	}
+	m.setInputFromHistory(entries[m.historyIndex])
+}
+
+func (m *model) setInputFromHistory(value string) {
+	m.input.SetValue(value)
+	m.input.CursorEnd()
 }
 
 func (m *model) stopSearch() {
@@ -185,6 +235,8 @@ func (m *model) stopSearch() {
 
 func (m *model) startSearch(query string) tea.Cmd {
 	m.stopSearch()
+	m.historyIndex, m.historyDraft = -1, ""
+	_ = m.history.add(query)
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancelSearch = cancel
 	m.loading = true
@@ -207,6 +259,7 @@ func (m *model) clearResults() tea.Cmd {
 	m.status, m.resultsHeader = "", ""
 	m.statusError = false
 	m.rowCursor, m.tableOffset = 0, 0
+	m.historyIndex, m.historyDraft = -1, ""
 	m.input.Reset()
 	m.resize()
 	return m.input.Focus()
@@ -322,6 +375,10 @@ func (m model) View() string {
 		body = lipgloss.Place(m.width, height, lipgloss.Center, lipgloss.Center, body)
 	}
 	body = lipgloss.NewStyle().Width(m.width).Height(height).MaxWidth(m.width).MaxHeight(height).Render(body)
-	footer := ansi.Truncate("ctrl+q Quit  ctrl+l Clear  c Columns  f1 Search", m.width, "")
+	footerText := "ctrl+q Quit  ctrl+l Clear  c Columns  f1 Search"
+	if !m.showingResults {
+		footerText += "  ↑/↓ History"
+	}
+	footer := ansi.Truncate(footerText, m.width, "")
 	return lipgloss.NewStyle().MaxWidth(m.width).MaxHeight(m.height).Render(header + "\n" + body + "\n" + footer)
 }

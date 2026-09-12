@@ -228,10 +228,15 @@ Run the TUI tests with `make tui-tests` (or `cd tui && go test ./...`).
 | `c` | Toggle column picker |
 | `ctrl+l` | Clear results / new search |
 | `Escape` | Close column picker, clear results, or blur search input |
+| `↑` / `↓` in search | Recall the previous / next query from search history |
 | `↑` / `↓` | Select a result or a column in the picker |
 | `Space` / `Enter` in picker | Toggle the selected column |
 | `←` / `→` in results | Scroll columns horizontally |
 | `ctrl+q` | Quit |
+
+Past queries are persisted to `$XDG_STATE_HOME/drillbit/history.json`
+(falling back to `~/.local/state/drillbit/history.json`), capped at 200
+entries with consecutive duplicates deduped.
 
 ---
 
