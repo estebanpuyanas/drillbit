@@ -359,6 +359,25 @@ def test_search_returns_raw_results_when_llm_returns_prose_prefixed_json(
     assert len(r.json()) >= 1
 
 
+def test_search_returns_raw_results_when_llm_returns_pretty_printed_json(
+    chroma_collection, llm_client
+):
+    """LLM prefixes prose before a pretty-printed, one-key-per-line JSON object."""
+    chroma_collection.count.return_value = 2
+    chroma_collection.query.return_value = make_chroma_results(["pkg-x", "pkg-y"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        'Here are the results:\n{\n "name": "pkg-x",\n'
+        ' "reason": "great pick for this"\n}'
+    )
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+    assert len(r.json()) >= 1
+
+
 def test_search_returns_raw_results_when_llm_returns_names_with_no_reason(
     chroma_collection, llm_client
 ):

@@ -220,6 +220,27 @@ async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
     return merged
 
 
+def _contains_json_reversion(text: str) -> bool:
+    """Detect a reply that reverted to the old JSON array/object shape.
+
+    Extracts the largest bracketed/braced region anywhere in the text (prose
+    preamble or not) and checks whether it parses as a JSON list or dict.
+    This is a structural check rather than a character-level one, so it
+    catches single-line JSON, prose-prefixed JSON, and pretty-printed
+    multi-line JSON alike — any shape the model reverts to — instead of
+    needing a new special case each time a new JSON formatting variant shows
+    up in practice.
+    """
+    match = re.search(r"[\[{].*[\]}]", text, re.DOTALL)
+    if not match:
+        return False
+    try:
+        parsed = json.loads(match.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return False
+    return isinstance(parsed, list | dict)
+
+
 def parse_ranked_lines(text: str) -> list[dict]:
     """Parse "package-name: reason" lines into `[{"name", "reason"}]` dicts.
 
@@ -227,14 +248,12 @@ def parse_ranked_lines(text: str) -> list[dict]:
     being told not to. Lines with no colon, or an empty name/reason, are
     skipped rather than treated as a hard failure — a handful of stray lines
     shouldn't sink an otherwise-good response. A reply that reverts to the old
-    JSON array-of-objects shape is rejected outright rather than colon-split,
-    since that would extract garbage names (e.g. '[{"name') that silently fail
-    to match any real candidate downstream instead of triggering a retry. This
-    also covers a JSON block prefixed with prose commentary (which doesn't
-    trip the whole-text check): any name that still carries a bracket/brace
-    fragment from colon-splitting a JSON line is skipped rather than kept.
+    JSON array-of-objects shape (in any formatting) is rejected outright
+    rather than salvaged via colon-splitting, since that would extract
+    garbage names that silently fail to match any real candidate downstream
+    instead of triggering a retry.
     """
-    if text.strip().startswith(("[", "{")):
+    if _contains_json_reversion(text):
         return []
     parsed = []
     for line in text.splitlines():
@@ -244,7 +263,7 @@ def parse_ranked_lines(text: str) -> list[dict]:
         name, _, reason = line.partition(":")
         name = name.strip().strip('"`*')
         reason = reason.strip()
-        if name and reason and not any(ch in name for ch in "[]{}"):
+        if name and reason:
             parsed.append({"name": name, "reason": reason})
     return parsed
 
