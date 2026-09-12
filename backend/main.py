@@ -229,7 +229,10 @@ def parse_ranked_lines(text: str) -> list[dict]:
     shouldn't sink an otherwise-good response. A reply that reverts to the old
     JSON array-of-objects shape is rejected outright rather than colon-split,
     since that would extract garbage names (e.g. '[{"name') that silently fail
-    to match any real candidate downstream instead of triggering a retry.
+    to match any real candidate downstream instead of triggering a retry. This
+    also covers a JSON block prefixed with prose commentary (which doesn't
+    trip the whole-text check): any name that still carries a bracket/brace
+    fragment from colon-splitting a JSON line is skipped rather than kept.
     """
     if text.strip().startswith(("[", "{")):
         return []
@@ -241,7 +244,7 @@ def parse_ranked_lines(text: str) -> list[dict]:
         name, _, reason = line.partition(":")
         name = name.strip().strip('"`*')
         reason = reason.strip()
-        if name and reason:
+        if name and reason and not any(ch in name for ch in "[]{}"):
             parsed.append({"name": name, "reason": reason})
     return parsed
 
