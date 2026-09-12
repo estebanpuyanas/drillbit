@@ -1,8 +1,33 @@
-.PHONY: help containers rebuild clean down logs ingest ingest-dry ingest-since tests tui tui-build tui-tests
+.DEFAULT_GOAL := run
+.PHONY: run help containers rebuild clean down logs ingest ingest-dry ingest-since tests tui tui-build tui-tests
+
+BACKEND_HEALTH_TIMEOUT ?= 180
+
+# Recursive makes keep startup ordered, including with make -j.
+run:
+	$(MAKE) tests
+	$(MAKE) containers
+	@echo "Waiting up to $(BACKEND_HEALTH_TIMEOUT)s for http://localhost:8000/health..."
+	@deadline=$$(( $$(date +%s) + $(BACKEND_HEALTH_TIMEOUT) )); \
+	while :; do \
+		remaining=$$((deadline - $$(date +%s))); \
+		if [ "$$remaining" -le 0 ]; then \
+			echo "Error: backend at http://localhost:8000/health did not become healthy within $(BACKEND_HEALTH_TIMEOUT)s. Check podman-compose logs backend ramalama." >&2; \
+			exit 1; \
+		fi; \
+		request_timeout=5; \
+		if [ "$$remaining" -lt "$$request_timeout" ]; then request_timeout=$$remaining; fi; \
+		if curl --fail --silent --output /dev/null --max-time "$$request_timeout" http://localhost:8000/health; then \
+			break; \
+		fi; \
+		sleep 2; \
+	done
+	$(MAKE) tui
 
 help:
 	@echo "Usage: make [target]"
 	@echo "Targets:"
+	@echo "  run          - Run tests, start containers, wait for backend health, and launch the TUI (default)"
 	@echo "  containers   - Build and start the Podman containers"
 	@echo "  rebuild      - Force rebuild all images and restart containers (even if they exist)"
 	@echo "  clean        - Remove all Podman containers and images"

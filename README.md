@@ -59,6 +59,7 @@ The **TUI runs on the host**, not in a container — it needs direct terminal ac
 - **uv** `pip install uv` or see [uv docs](https://docs.astral.sh/uv/)
 - **Podman** + **podman-compose**
 - **Git**
+- **Make** and **curl** (single-command startup and backend health checks)
 
 > [!NOTE]
 > **Mac users**: Install [Podman Desktop](https://podman-desktop.io/) as it handles the Podman Machine (Linux VM) setup. Do this before the event; first-time init takes several minutes.
@@ -152,31 +153,48 @@ pyenv local 3.12
 uv sync --dev   # creates .venv and installs everything from pyproject.toml
 ```
 
-### 4. Start the container stack
+### 4. Start Drillbit
 
 ```bash
-podman-compose up -d
+make
 ```
+
+Bare `make` (or `make run`) runs the Python test suite, builds missing container
+images and starts the stack using `make containers`, waits for the backend health
+check, then builds and launches the Go TUI in the same terminal. If tests fail,
+containers are left untouched. Quit the TUI with `ctrl+q`; containers keep running
+until you run `make down`.
+
+The backend readiness check polls `http://localhost:8000/health` for up to 180
+seconds after container startup returns. If it times out, startup fails with a
+message pointing to the container logs and does not launch the TUI. For a slower
+first run, allow more time with `make BACKEND_HEALTH_TIMEOUT=600` (seconds).
 
 The first run pulls the LLM model (~2GB for llama3.2:3b). **Do this before the hackathon on a good connection.** Model data is stored in the `ramalama_models` named volume and persists between restarts.
 
 > [!WARNING]
 > Never run `podman-compose down -v` the `-v` flag deletes volumes including the downloaded model. Use `podman-compose down` (no `-v`) to stop services.
 
-### 5. Verify the stack
+### 5. Optional: start and verify the stack separately
+
+The individual steps remain available if you want to manage startup yourself:
 
 ```bash
+make tests
+make containers                       # equivalent to podman-compose up -d
 curl http://localhost:8000/health        # backend → {"status":"ok"}
 curl http://localhost:8080/v1/models     # ramalama → model list
 curl http://localhost:8001/health        # mcp-server → {"status":"ok"}
+make tui                              # launch once the backend is ready
 ```
 
 ---
 
 ## Running the TUI
 
-The host-side UI is a Go program built with Bubble Tea. After starting the stack
-with `podman-compose up -d`, run it from the repository root:
+The host-side UI is a Go program built with Bubble Tea. From the repository root,
+run `make` to test, start the stack, wait for backend health, and open the TUI in
+one terminal. If the stack is already running, launch just the TUI with:
 
 ```bash
 make tui
@@ -283,6 +301,19 @@ Do not remove this index URL as it keeps the backend image at ~1.6GB instead of 
 ---
 
 ## Key Commands Reference
+
+### Startup and TUI
+
+```bash
+make                                  # tests → containers → backend health → TUI
+make run                              # same as bare make
+make BACKEND_HEALTH_TIMEOUT=600        # allow a longer backend readiness wait
+make help                             # list targets
+make tests                            # Python tests only
+make containers                       # start the stack only
+make tui                              # build and run the TUI against a running stack
+make tui-tests                        # Go TUI tests only
+```
 
 ### Container management
 
