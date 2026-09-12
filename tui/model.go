@@ -118,7 +118,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+q":
+		case "ctrl+q", "ctrl+c":
 			m.stopSearch()
 			return m, tea.Quit
 		case "ctrl+l":

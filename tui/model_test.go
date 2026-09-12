@@ -22,7 +22,7 @@ func testModel() model {
 func keyMsg(key string) tea.KeyMsg {
 	keys := map[string]tea.KeyType{
 		"enter": tea.KeyEnter, "esc": tea.KeyEsc, "f1": tea.KeyF1,
-		"ctrl+l": tea.KeyCtrlL, "ctrl+q": tea.KeyCtrlQ, "up": tea.KeyUp,
+		"ctrl+l": tea.KeyCtrlL, "ctrl+q": tea.KeyCtrlQ, "ctrl+c": tea.KeyCtrlC, "up": tea.KeyUp,
 		"down": tea.KeyDown, "left": tea.KeyLeft, "right": tea.KeyRight,
 		"home": tea.KeyHome, "end": tea.KeyEnd, "pgdown": tea.KeyPgDown,
 		"pgup": tea.KeyPgUp,
@@ -84,6 +84,10 @@ func TestSearchInputFocusAndClear(t *testing.T) {
 	m, cmd = update(m, keyMsg("ctrl+q"))
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Fatal("Ctrl+Q must quit")
+	}
+	m, cmd = update(m, keyMsg("ctrl+c"))
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("Ctrl+C must quit")
 	}
 }
 

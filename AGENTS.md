@@ -144,7 +144,7 @@ uv sync --dev   # creates .venv and installs all deps in one step
 ## Key Files
 
 - `podman-compose.yml`: service definitions, port mappings, named volumes (`ramalama_models`, `chroma_data`)
-- `tui/`: Go / Bubble Tea host TUI; `model.go` owns views and keybindings, `client.go` owns HTTP search, and `table.go` owns columns and rendering
+- `tui/`: Go / Bubble Tea host TUI; `model.go` owns views and keybindings, `client.go` owns HTTP search, and `table.go` owns columns and rendering. Both `ctrl+q` and `ctrl+c` quit — the alt-screen/raw-mode terminal disables SIGINT/SIGTSTP entirely, so any other key (including a bare `ctrl+c` fallback) would otherwise do nothing and leave the process (and the recursive `make run` waiting on it) stuck in the foreground.
 - `backend/main.py`: FastAPI `/search` endpoint: vector search, BM25, RRF, COPR enrichment, LLM re-ranking. `/search` has three return paths (LLM re-ranked happy path, raw-candidate fallback when re-ranking fails, LLM-suggestion-only fallback when ChromaDB is empty) — all three must build results via `to_package_result()` so every path yields the same `PackageResult` field set; never construct a result dict by hand in a new path.
 - `backend/ingest.py`: one-time COPR → ChromaDB crawl; run inside container to populate the index
 - `backend/chroma.py`: ChromaDB `PersistentClient` init; `packages` collection persisted to `chroma_data` volume
