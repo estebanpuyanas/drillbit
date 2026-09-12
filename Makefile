@@ -28,8 +28,8 @@ help:
 	@echo "Usage: make [target]"
 	@echo "Targets:"
 	@echo "  run          - Run tests, start containers, wait for backend health, and launch the TUI (default)"
-	@echo "  containers   - Build and start the Podman containers"
-	@echo "  rebuild      - Force rebuild all images and restart containers (even if they exist)"
+	@echo "  containers   - Build (using cache) and start the Podman containers, always reflecting current source"
+	@echo "  rebuild      - Force a from-scratch rebuild of all images (bypasses build cache) and restart containers"
 	@echo "  clean        - Remove all Podman containers and images"
 	@echo "  down         - Stop the Podman containers"
 	@echo "  logs         - Write the live container logs into a file named 'logs.txt'"
@@ -42,13 +42,22 @@ help:
 	@echo "  tui-tests    - Run the Go TUI tests"
 
 containers:
-	@echo "Building and starting Podman containers..."
-	podman-compose up -d
+	@echo "Building (using cache) and starting Podman containers..."
+	@old_backend=$$(podman images -q localhost/drillbit_backend:latest 2>/dev/null); \
+	old_mcp=$$(podman images -q localhost/drillbit_mcp-server:latest 2>/dev/null); \
+	old_ramalama=$$(podman images -q localhost/drillbit_ramalama:latest 2>/dev/null); \
+	podman-compose up -d --build && \
+	scripts/prune-stale-images.sh "$$old_backend" "$$old_mcp" "$$old_ramalama"
 	@echo "Containers are up and running."
 
 rebuild:
-	@echo "Rebuilding and restarting all containers..."
-	podman-compose up -d --build
+	@echo "Rebuilding (from scratch, bypassing cache) and restarting all containers..."
+	@old_backend=$$(podman images -q localhost/drillbit_backend:latest 2>/dev/null); \
+	old_mcp=$$(podman images -q localhost/drillbit_mcp-server:latest 2>/dev/null); \
+	old_ramalama=$$(podman images -q localhost/drillbit_ramalama:latest 2>/dev/null); \
+	podman-compose build --no-cache && \
+	podman-compose up -d && \
+	scripts/prune-stale-images.sh "$$old_backend" "$$old_mcp" "$$old_ramalama"
 	@echo "Containers have been rebuilt and restarted."
 
 down:
