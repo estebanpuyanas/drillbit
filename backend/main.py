@@ -1,15 +1,15 @@
+import asyncio
 import dataclasses
 import json
 import re
-import asyncio
 
 import httpx
+from bm25 import bm25_search, reciprocal_rank_fusion
+from chroma import collection
 from fastapi import FastAPI
 from openai import AsyncOpenAI
+from prompt import QUERY_EXPANSION_PROMPT, SYSTEM_PROMPT
 from sentence_transformers import SentenceTransformer
-from prompt import SYSTEM_PROMPT, QUERY_EXPANSION_PROMPT
-from chroma import collection
-from bm25 import bm25_search, reciprocal_rank_fusion
 
 app = FastAPI()
 llm = AsyncOpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
@@ -38,6 +38,32 @@ class PackageResult:
     submitted_on: int | None = None
     ended_on: int | None = None
     reason: str = ""
+
+
+def to_package_result(base: dict, name: str | None = None, reason: str = "") -> dict:
+    """Build a full PackageResult dict from a raw candidate dict.
+
+    Every /search return path must funnel through this so all three paths
+    (LLM re-ranked, raw candidates, ChromaDB-empty LLM suggestions) yield the
+    same keys, with genuinely unknown fields left empty/null rather than
+    missing or differently named (e.g. "description" -> copr_description).
+    """
+    return dataclasses.asdict(
+        PackageResult(
+            name=name or base.get("name", ""),
+            summary=base.get("summary", ""),
+            copr_project=base.get("copr_project", ""),
+            score=base.get("score", 0.0),
+            version=base.get("version", ""),
+            homepage=base.get("homepage", ""),
+            contact=base.get("contact", ""),
+            copr_description=base.get("description", base.get("copr_description", "")),
+            build_state=base.get("build_state", ""),
+            submitted_on=base.get("submitted_on"),
+            ended_on=base.get("ended_on"),
+            reason=reason,
+        )
+    )
 
 
 def truncate(text: str, max_chars: int) -> str:
@@ -169,7 +195,9 @@ async def search_copr_live(keyword: str, limit: int = 10) -> list[dict]:
 async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
     """Expand query to keywords and search COPR live, deduplicating across keywords."""
     keywords = await expand_query(query)
-    result_sets = await asyncio.gather(*(search_copr_live(kw, limit=limit) for kw in keywords))
+    result_sets = await asyncio.gather(
+        *(search_copr_live(kw, limit=limit) for kw in keywords)
+    )
     seen: set[tuple[str, str]] = set()
     merged = []
     for results in result_sets:
@@ -199,11 +227,18 @@ async def test_llm():
 async def search(q: str, limit: int = 5):
     # Step 1: ChromaDB vector search — pull more candidates than needed for re-ranking
     candidates = []
-    if collection.count() > 0:
+    chroma_count = collection.count()
+    if chroma_count == 0:
+        print(
+            f"[chroma-empty] ChromaDB collection has no packages indexed; "
+            f"skipping vector/BM25 search for query: {q!r}. Run ingest.py to populate it.",
+            flush=True,
+        )
+    else:
         loop = asyncio.get_running_loop()
         raw_embedding = await loop.run_in_executor(None, embedder.encode, q)
         embedding = raw_embedding.tolist()
-        n = min(limit * 3, collection.count())
+        n = min(limit * 3, chroma_count)
         results = collection.query(query_embeddings=[embedding], n_results=n)
         vector_candidates = [
             {
@@ -238,7 +273,9 @@ async def search(q: str, limit: int = 5):
         )
         mcp_hits = await mcp_fallback_search(q, limit=limit * 2)
         local_keys = {(c["name"], c["copr_project"]) for c in candidates}
-        new_hits = [h for h in mcp_hits if (h["name"], h["copr_project"]) not in local_keys]
+        new_hits = [
+            h for h in mcp_hits if (h["name"], h["copr_project"]) not in local_keys
+        ]
         candidates = candidates + new_hits
 
     # Step 3: Enrich candidates with live COPR metadata
@@ -283,28 +320,13 @@ async def search(q: str, limit: int = 5):
                         continue
                     base = candidate_map.get(name, {})
                     results.append(
-                        dataclasses.asdict(
-                            PackageResult(
-                                name=name,
-                                version=base.get("version", ""),
-                                summary=base.get("summary", ""),
-                                copr_project=base.get("copr_project", ""),
-                                copr_description=base.get("description", ""),
-                                homepage=base.get("homepage", ""),
-                                contact=base.get("contact", ""),
-                                build_state=base.get("build_state", ""),
-                                submitted_on=base.get("submitted_on"),
-                                ended_on=base.get("ended_on"),
-                                reason=p.get("reason", ""),
-                                score=base.get("score", 0.0),
-                            )
-                        )
+                        to_package_result(base, name=name, reason=p.get("reason", ""))
                     )
                 return results
         except Exception:
             pass
-        # LLM failed — return raw vector results
-        return candidates[:limit]
+        # LLM re-ranking failed — return raw candidates, normalized to the same shape
+        return [to_package_result(c) for c in candidates[:limit]]
 
     # Fallback: ask the LLM for package suggestions when ChromaDB is empty
     try:
@@ -330,13 +352,9 @@ async def search(q: str, limit: int = 5):
         if match:
             pkgs = json.loads(match.group())
             return [
-                {
-                    "name": p["name"],
-                    "summary": p.get("summary", ""),
-                    "copr_project": "",
-                    "reason": "",
-                    "score": 1.0,
-                }
+                to_package_result(
+                    {"name": p["name"], "summary": p.get("summary", ""), "score": 1.0}
+                )
                 for p in pkgs[:limit]
             ]
     except Exception:
