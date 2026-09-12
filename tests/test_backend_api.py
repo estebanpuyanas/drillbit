@@ -131,7 +131,8 @@ def test_search_score_is_numeric(chroma_collection, llm_client):
 def test_search_fallback_when_chroma_empty(chroma_collection, llm_client):
     chroma_collection.count.return_value = 0
     llm_client.chat.completions.create.return_value = make_llm_response(
-        '[{"name": "kdenlive", "summary": "Non-linear video editor"}]'
+        '[{"name": "kdenlive", "summary": "Non-linear video editor", '
+        '"reason": "A popular, actively maintained non-linear video editor"}]'
     )
 
     r = client.get("/search", params={"q": "video editor"})
@@ -149,17 +150,20 @@ def test_search_fallback_when_chroma_empty(chroma_collection, llm_client):
         assert item["version"] == ""
         assert item["submitted_on"] is None
         assert item["ended_on"] is None
-        assert item["reason"] == ""
+        # This path now asks the LLM for a reason alongside name/summary, so
+        # it must no longer come back blank.
+        assert item["reason"] == "A popular, actively maintained non-linear video editor"
 
 
 def test_search_raw_candidates_when_llm_reranking_fails_share_required_schema(
     chroma_collection, llm_client
 ):
-    """Regression test: when ChromaDB has candidates but LLM re-ranking raises,
-    the raw-candidate fallback must be normalized to the same schema as the
-    happy path — mapping enrichment's "description" key to "copr_description"
-    and always including "reason" (empty), instead of silently returning
-    differently-shaped raw dicts."""
+    """Regression test: when ChromaDB has candidates but LLM re-ranking raises
+    on every attempt (retries exhausted), the raw-candidate fallback must be
+    normalized to the same schema as the happy path — mapping enrichment's
+    "description" key to "copr_description" — and must carry a clearly-labeled,
+    non-blank, non-LLM reason instead of silently returning differently-shaped
+    raw dicts with empty reasoning."""
     chroma_collection.count.return_value = 1
     chroma_collection.query.return_value = make_chroma_results(["mypkg"])
     llm_client.chat.completions.create.side_effect = Exception("timeout")
@@ -193,7 +197,54 @@ def test_search_raw_candidates_when_llm_reranking_fails_share_required_schema(
     assert item["version"] == "1.2.3"
     assert item["submitted_on"] == 1710000000
     assert item["ended_on"] == 1710000100
-    assert item["reason"] == ""
+    assert item["reason"] != ""
+    assert "0.90" in item["reason"]
+    # The retry loop should have exhausted both attempts before giving up.
+    assert llm_client.chat.completions.create.call_count == 2
+
+
+def test_search_retries_rerank_and_recovers_reason_after_transient_failure(
+    chroma_collection, llm_client
+):
+    """A transient failure on the first re-ranking attempt should be retried,
+    recovering a real LLM reason instead of dropping straight to the
+    deterministic raw-candidate fallback."""
+    chroma_collection.count.return_value = 1
+    chroma_collection.query.return_value = make_chroma_results(["mypkg"])
+    llm_client.chat.completions.create.side_effect = [
+        Exception("transient timeout"),
+        make_llm_response('[{"name": "mypkg", "reason": "Recovered after retry"}]'),
+    ]
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    results = r.json()
+    assert len(results) == 1
+    assert results[0]["reason"] == "Recovered after retry"
+    assert llm_client.chat.completions.create.call_count == 2
+
+
+def test_search_drops_ranked_name_with_no_matching_candidate(
+    chroma_collection, llm_client
+):
+    """If the LLM ranks a name that isn't among the real candidates, that
+    entry must be dropped rather than shown with empty/garbage reasoning."""
+    chroma_collection.count.return_value = 1
+    chroma_collection.query.return_value = make_chroma_results(["mypkg"])
+    llm_client.chat.completions.create.return_value = make_llm_response(
+        '[{"name": "mypkg", "reason": "Real candidate"}, '
+        '{"name": "not-a-real-candidate", "reason": "hallucinated"}]'
+    )
+
+    with patch("main.enrich_candidates", side_effect=lambda c: c):
+        r = client.get("/search", params={"q": "something"})
+
+    assert r.status_code == 200
+    results = r.json()
+    names = [item["name"] for item in results]
+    assert names == ["mypkg"]
 
 
 def test_search_returns_empty_list_when_chroma_empty_and_llm_fails(

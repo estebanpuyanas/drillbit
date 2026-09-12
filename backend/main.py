@@ -16,6 +16,12 @@ llm = AsyncOpenAI(base_url="http://ramalama:8080/v1", api_key="unused")
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
 CONFIDENCE_THRESHOLD = 0.40  # top vector score below this triggers live COPR fallback
+RERANK_ATTEMPTS = 2  # one retry on top of the initial re-ranking call
+RERANK_TIMEOUT = 10.0  # seconds per attempt
+RAW_FALLBACK_REASON = (
+    "Matched by local keyword/semantic search ranking (score {score:.2f}); "
+    "LLM reasoning was unavailable for this result."
+)
 
 
 @dataclasses.dataclass
@@ -209,6 +215,47 @@ async def mcp_fallback_search(query: str, limit: int) -> list[dict]:
     return merged
 
 
+async def rerank_with_llm(query: str, candidates: list, limit: int) -> list | None:
+    """Ask the LLM to pick and explain the best matches, retrying on failure.
+
+    Returns the parsed `[{"name":..., "reason":...}]` list, or None if every
+    attempt failed to produce a valid JSON array (timeout, exception, or
+    unparseable response).
+    """
+    candidate_list = "\n".join(
+        f"{i + 1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
+    )
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f'A user wants: "{query}"\n\n'
+                f"Choose the {limit} most relevant packages from this list and return them "
+                f'as a JSON array in order of relevance: [{{"name":"pkg-name","reason":"one sentence why"}}]\n\n'
+                f"{candidate_list}"
+            ),
+        },
+    ]
+    for _ in range(RERANK_ATTEMPTS):
+        try:
+            resp = await asyncio.wait_for(
+                llm.chat.completions.create(
+                    model="llama3.2:3b",
+                    messages=messages,
+                    temperature=0.1,
+                ),
+                timeout=RERANK_TIMEOUT,
+            )
+            text = resp.choices[0].message.content.strip()
+            match = re.search(r"\[.*\]", text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        except Exception:
+            continue
+    return None
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -284,49 +331,32 @@ async def search(q: str, limit: int = 5):
 
     # Step 4: LLM re-ranking — ask the model to pick the best matches from candidates
     if candidates:
-        candidate_list = "\n".join(
-            f"{i + 1}. {c['name']}: {c['summary']}" for i, c in enumerate(candidates)
-        )
-        try:
-            resp = await llm.chat.completions.create(
-                model="llama3.2:3b",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT,
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            f'A user wants: "{q}"\n\n'
-                            f"Choose the {limit} most relevant packages from this list and return them "
-                            f'as a JSON array in order of relevance: [{{"name":"pkg-name","reason":"one sentence why"}}]\n\n'
-                            f"{candidate_list}"
-                        ),
-                    },
-                ],
-                temperature=0.1,
+        ranked = await rerank_with_llm(q, candidates, limit)
+        if ranked is not None:
+            # Merge LLM ranking with candidate metadata
+            candidate_map = {c["name"]: c for c in candidates}
+            results = []
+            for p in ranked[:limit]:
+                name = p.get("name")
+                if not name:
+                    continue
+                base = candidate_map.get(name)
+                if base is None:
+                    # LLM named a package that isn't one of the real candidates —
+                    # drop it rather than show a result with no backing metadata.
+                    continue
+                results.append(
+                    to_package_result(base, name=name, reason=p.get("reason", ""))
+                )
+            return results
+        # LLM re-ranking failed after retrying — return raw candidates with an
+        # honest, deterministic (non-LLM) explanation instead of a blank reason.
+        return [
+            to_package_result(
+                c, reason=RAW_FALLBACK_REASON.format(score=c.get("score", 0.0))
             )
-            text = resp.choices[0].message.content.strip()
-            match = re.search(r"\[.*\]", text, re.DOTALL)
-            if match:
-                ranked = json.loads(match.group())
-                # Merge LLM ranking with candidate metadata
-                candidate_map = {c["name"]: c for c in candidates}
-                results = []
-                for p in ranked[:limit]:
-                    name = p.get("name")
-                    if not name:
-                        continue
-                    base = candidate_map.get(name, {})
-                    results.append(
-                        to_package_result(base, name=name, reason=p.get("reason", ""))
-                    )
-                return results
-        except Exception:
-            pass
-        # LLM re-ranking failed — return raw candidates, normalized to the same shape
-        return [to_package_result(c) for c in candidates[:limit]]
+            for c in candidates[:limit]
+        ]
 
     # Fallback: ask the LLM for package suggestions when ChromaDB is empty
     try:
@@ -341,7 +371,8 @@ async def search(q: str, limit: int = 5):
                     "role": "user",
                     "content": (
                         f'List the top {limit} Fedora RPM packages for: "{q}". '
-                        'Return a JSON array: [{"name":"pkg-name","summary":"one sentence"}]'
+                        'Return a JSON array: [{"name":"pkg-name","summary":"one sentence",'
+                        '"reason":"one sentence why this package fits"}]'
                     ),
                 },
             ],
@@ -353,7 +384,8 @@ async def search(q: str, limit: int = 5):
             pkgs = json.loads(match.group())
             return [
                 to_package_result(
-                    {"name": p["name"], "summary": p.get("summary", ""), "score": 1.0}
+                    {"name": p["name"], "summary": p.get("summary", ""), "score": 1.0},
+                    reason=p.get("reason", ""),
                 )
                 for p in pkgs[:limit]
             ]
