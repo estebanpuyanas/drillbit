@@ -103,6 +103,8 @@ podman-compose logs -f <service>            # tail logs
 podman ps -a                                # list all containers
 ```
 
+`make containers` (and therefore bare `make`) always runs `podman-compose up -d --build`, so it picks up current source on every run — Podman's build cache keeps a no-op rebuild cheap (layers unaffected by the diff are reused). Never call raw `podman-compose up -d` directly to bring the stack up: it reuses whatever image already exists in the local Podman store with no rebuild attempt and no warning, so code changes since the last build silently never run. `make rebuild` bypasses the cache entirely for a guaranteed from-scratch build. Both targets prune only the specific image IDs they just superseded (`scripts/prune-stale-images.sh`, scoped to `drillbit_backend`/`drillbit_mcp-server`/`drillbit_ramalama`) — never a system-wide `podman image prune`, since this host may run other unrelated container projects.
+
 ### Dependency Management
 
 The Go TUI uses `tui/go.mod` and `tui/go.sum`; see README.md for host build/run instructions.
