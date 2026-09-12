@@ -152,7 +152,9 @@ def test_search_fallback_when_chroma_empty(chroma_collection, llm_client):
         assert item["ended_on"] is None
         # This path now asks the LLM for a reason alongside name/summary, so
         # it must no longer come back blank.
-        assert item["reason"] == "A popular, actively maintained non-linear video editor"
+        assert (
+            item["reason"] == "A popular, actively maintained non-linear video editor"
+        )
 
 
 def test_search_raw_candidates_when_llm_reranking_fails_share_required_schema(

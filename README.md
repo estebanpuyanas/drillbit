@@ -237,7 +237,7 @@ Run the TUI tests with `make tui-tests` (or `cd tui && go test ./...`).
 
 ## Populating the Search Index
 
-ChromaDB starts empty. Without a populated index the backend falls back to a live COPR keyword search, which returns results but no descriptions or reasons.
+ChromaDB starts empty. Without a populated index the backend falls back to a live COPR keyword search, or to LLM-suggested packages if COPR itself returns nothing. Every result still includes a reason — LLM-generated when possible, otherwise a clearly labeled deterministic explanation — though richer metadata like version or build state is only available once the index is populated.
 
 Run the ingest script inside the backend container to crawl COPR and populate ChromaDB:
 
@@ -247,7 +247,7 @@ podman exec -it drillbit_backend_1 python ingest.py
 
 This is a long-running crawl (it pages through all public COPR projects and packages, scores them, and upserts the top 1000 into ChromaDB). Progress is printed to stdout. It is safe to re-run — upsert is idempotent and unchanged packages are skipped.
 
-After ingest completes, the full pipeline (vector search + BM25 + LLM re-ranking) activates and results will include descriptions and reasons.
+After ingest completes, the full pipeline (vector search + BM25 + LLM re-ranking) activates, giving results richer summaries and metadata alongside the reason.
 
 ---
 
