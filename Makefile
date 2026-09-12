@@ -46,7 +46,7 @@ containers:
 	@old_backend=$$(podman images -q localhost/drillbit_backend:latest 2>/dev/null); \
 	old_mcp=$$(podman images -q localhost/drillbit_mcp-server:latest 2>/dev/null); \
 	old_ramalama=$$(podman images -q localhost/drillbit_ramalama:latest 2>/dev/null); \
-	podman-compose up -d --build && \
+	podman-compose up -d --build --force-recreate && \
 	scripts/prune-stale-images.sh "$$old_backend" "$$old_mcp" "$$old_ramalama"
 	@echo "Containers are up and running."
 
@@ -56,7 +56,7 @@ rebuild:
 	old_mcp=$$(podman images -q localhost/drillbit_mcp-server:latest 2>/dev/null); \
 	old_ramalama=$$(podman images -q localhost/drillbit_ramalama:latest 2>/dev/null); \
 	podman-compose build --no-cache && \
-	podman-compose up -d && \
+	podman-compose up -d --force-recreate && \
 	scripts/prune-stale-images.sh "$$old_backend" "$$old_mcp" "$$old_ramalama"
 	@echo "Containers have been rebuilt and restarted."
 
