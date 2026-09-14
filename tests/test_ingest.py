@@ -395,6 +395,32 @@ def test_dry_run_reports_no_packages_found(capsys):
     assert "[dry-run] No packages found to index" in out
 
 
+def test_dry_run_score_range_respects_max_packages_cutoff(monkeypatch, capsys):
+    """score_range() must use the score of the lowest-ranked package that actually
+    makes the top-MAX_PACKAGES cut, not the lowest-ranked package overall — this
+    only diverges when there are more scored packages than MAX_PACKAGES."""
+    monkeypatch.setattr("ingest.MAX_PACKAGES", 2)
+    packages = [
+        {"name": "top-pkg", "summary": "s", "description": "x" * 300},
+        {"name": "mid-pkg", "summary": "s", "description": "x" * 100},
+        {"name": "bottom-pkg", "summary": "s", "description": "x" * 10},
+    ]
+    with (
+        patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
+        patch(
+            "ingest.fetch_project_details",
+            return_value=("Install with: sudo dnf install mypkg", False),
+        ),
+        patch("ingest.iter_packages", side_effect=lambda *a, **k: iter(packages)),
+    ):
+        main(dry_run=True)
+
+    out = capsys.readouterr().out
+    # top-pkg=5.50, mid-pkg=5.00, bottom-pkg=4.00 — with MAX_PACKAGES=2 the cutoff
+    # is mid-pkg's 5.00, not bottom-pkg's 4.00.
+    assert "5.00-5.50" in out
+
+
 # ── main(since_ts=...) ──────────────────────────────────────────────────────────
 
 

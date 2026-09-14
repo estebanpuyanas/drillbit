@@ -42,6 +42,14 @@ NOISE_INSTRUCTIONS_MARKERS = (
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
+def score_range(scored: list[tuple[float, dict]]) -> tuple[float, float]:
+    """Return (min, max) score among the packages that will actually be indexed
+    (i.e. the top MAX_PACKAGES of scored, which is sorted descending)."""
+    score_min = scored[min(len(scored), MAX_PACKAGES) - 1][0]
+    score_max = scored[0][0]
+    return score_min, score_max
+
+
 def package_hash(package: dict) -> str:
     """Generate a SHA256 hash for a package based on its name, summary, and description."""
     raw = f"{package.get('name', '')}:{package.get('summary', '')}:{package.get('description', '')}"
@@ -307,8 +315,7 @@ def main(dry_run: bool = False, since_ts: float | None = None):
 
     if dry_run:
         if scored:
-            score_min = scored[min(len(scored), MAX_PACKAGES) - 1][0]
-            score_max = scored[0][0]
+            score_min, score_max = score_range(scored)
             print(
                 f"[dry-run] Would index top {len(top_uids)} of {total_collected} scored "
                 f"packages from {total_projects} projects. Score range: "
@@ -341,8 +348,7 @@ def main(dry_run: bool = False, since_ts: float | None = None):
         total_pkgs += len(ids)
 
     if scored:
-        score_min = scored[min(len(scored), MAX_PACKAGES) - 1][0]
-        score_max = scored[0][0]
+        score_min, score_max = score_range(scored)
         print(
             f"Done. Scored {total_collected} packages, indexed top {total_pkgs}. "
             f"Score range: {score_min:.2f}–{score_max:.2f}"
