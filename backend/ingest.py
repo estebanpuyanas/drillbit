@@ -2,21 +2,25 @@
 One-time COPR → ChromaDB ingestion script.
 
 Run inside the backend container after the stack is up:
-    podman exec -it drillbit-test_backend_1 python ingest.py
+    podman exec -it drillbit_backend_1 python ingest.py
 
 Progress is printed to stdout. Safe to re-run — upsert is idempotent.
+
+Flags: --dry-run (preview only, no writes) and --since DATE (filter by each
+package's latest COPR build submission time — see package_updated_since()).
 """
 
+import argparse
+import hashlib
 import sys
 import time
-import hashlib
 from collections import Counter
+from datetime import UTC, datetime
 
 import httpx
-from sentence_transformers import SentenceTransformer
-
 from chroma import collection
 from scorer import compute_scores
+from sentence_transformers import SentenceTransformer
 
 COPR_API = "https://copr.fedorainfracloud.org/api_3"
 BATCH_SIZE = 64  # embeddings batch size
@@ -106,20 +110,27 @@ def iter_projects(client: httpx.Client):
         offset += PROJECT_PAGE_SIZE
 
 
-def iter_packages(client: httpx.Client, ownername: str, projectname: str):
-    """Yield all packages in a COPR project."""
+def iter_packages(
+    client: httpx.Client, ownername: str, projectname: str, with_latest_build: bool = False
+):
+    """Yield all packages in a COPR project.
+
+    with_latest_build=True asks COPR to embed each package's latest build
+    (including its submitted_on timestamp) in the response — see
+    package_updated_since(). It's opt-in because it adds payload weight we
+    don't need on a normal, non-filtered crawl.
+    """
     offset = 0
     while True:
-        data = copr_get(
-            client,
-            "/package/list",
-            {
-                "ownername": ownername,
-                "projectname": projectname,
-                "limit": PKG_PAGE_SIZE,
-                "offset": offset,
-            },
-        )
+        params = {
+            "ownername": ownername,
+            "projectname": projectname,
+            "limit": PKG_PAGE_SIZE,
+            "offset": offset,
+        }
+        if with_latest_build:
+            params["with_latest_build"] = True
+        data = copr_get(client, "/package/list", params)
         packages = data.get("items") or data.get("packages") or []
         if not packages:
             break
@@ -127,6 +138,54 @@ def iter_packages(client: httpx.Client, ownername: str, projectname: str):
         if len(packages) < PKG_PAGE_SIZE:
             break
         offset += PKG_PAGE_SIZE
+
+
+def parse_since(value: str) -> float:
+    """Parse a YYYY-MM-DD date string into a UTC unix timestamp."""
+    try:
+        dt = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"invalid date '{value}', expected YYYY-MM-DD") from e
+    return dt.replace(tzinfo=UTC).timestamp()
+
+
+def package_updated_since(package: dict, since_ts: float) -> bool:
+    """Return True if package's latest COPR build was submitted on/after since_ts.
+
+    COPR's API exposes no last-modified timestamp on projects or packages
+    themselves (confirmed against the live /project/list, /project, and
+    /package/list responses — none carry one). The latest build's
+    submitted_on (available per-package via /package/list?with_latest_build=True)
+    is the closest genuine per-package activity signal COPR offers, so --since
+    filters on it. Packages with no recorded build have no timestamp to
+    compare and are treated as not updated.
+    """
+    latest = (package.get("builds") or {}).get("latest")
+    if not latest:
+        return False
+    submitted_on = latest.get("submitted_on")
+    return submitted_on is not None and submitted_on >= since_ts
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Crawl COPR and index package metadata into ChromaDB.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run the full crawl/scoring pipeline but skip writing to ChromaDB; print a preview instead.",
+    )
+    parser.add_argument(
+        "--since",
+        type=parse_since,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help=(
+            "Only index packages whose latest COPR build was submitted on or after this date. "
+            "COPR has no project/package 'last modified' field, so this filters on the latest "
+            "build's submission time instead — see package_updated_since()."
+        ),
+    )
+    return parser.parse_args(argv)
 
 
 def flush_batch(ids, texts, metadatas, hashes):
@@ -154,10 +213,11 @@ def flush_batch(ids, texts, metadatas, hashes):
     )
 
 
-def main():
+def main(dry_run: bool = False, since_ts: float | None = None):
     all_packages = []  # list of (uid, text, metadata, hash)
     cross_project_counts = Counter()  # package_name → # of projects containing it
     total_projects = 0
+    packages_skipped_stale = 0
 
     with httpx.Client() as client:
         for project in iter_projects(client):
@@ -187,8 +247,17 @@ def main():
                     flush=True,
                 )
 
+            pkg_iter = (
+                iter_packages(client, owner, name, with_latest_build=True)
+                if since_ts is not None
+                else iter_packages(client, owner, name)
+            )
             try:
-                for pkg in iter_packages(client, owner, name):
+                for pkg in pkg_iter:
+                    if since_ts is not None and not package_updated_since(pkg, since_ts):
+                        packages_skipped_stale += 1
+                        continue
+
                     pkg_name = pkg.get("name", "")
                     summary = pkg.get("summary") or ""
                     pkg_description = pkg.get("description") or ""
@@ -225,6 +294,8 @@ def main():
         f"\nScoring {total_collected} packages from {total_projects} projects...",
         flush=True,
     )
+    if since_ts is not None:
+        print(f"  ({packages_skipped_stale} packages skipped: no build on/after --since)")
 
     pkg_metas = [meta for _, _, meta, _ in all_packages]
     scored = compute_scores(pkg_metas, cross_project_counts)
@@ -233,6 +304,19 @@ def main():
         f"{meta['ownername']}/{meta['projectname']}/{meta['name']}": score
         for score, meta in scored[:MAX_PACKAGES]
     }
+
+    if dry_run:
+        if scored:
+            score_min = scored[min(len(scored), MAX_PACKAGES) - 1][0]
+            score_max = scored[0][0]
+            print(
+                f"[dry-run] Would index top {len(top_uids)} of {total_collected} scored "
+                f"packages from {total_projects} projects. Score range: "
+                f"{score_min:.2f}-{score_max:.2f}. No writes were made to ChromaDB."
+            )
+        else:
+            print("[dry-run] No packages found to index. No writes were made to ChromaDB.")
+        return
 
     # Upsert top-N in batches, adding popularity_score to stored metadata
     ids, texts, metadatas, hashes = [], [], [], []
@@ -257,7 +341,7 @@ def main():
         total_pkgs += len(ids)
 
     if scored:
-        score_min = scored[-1][0] if len(scored) >= MAX_PACKAGES else scored[-1][0]
+        score_min = scored[min(len(scored), MAX_PACKAGES) - 1][0]
         score_max = scored[0][0]
         print(
             f"Done. Scored {total_collected} packages, indexed top {total_pkgs}. "
@@ -268,4 +352,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cli_args = parse_args()
+    main(dry_run=cli_args.dry_run, since_ts=cli_args.since)

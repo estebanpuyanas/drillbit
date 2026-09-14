@@ -1,27 +1,40 @@
 """
-Tests for the noise-filtering logic added to ingest.py.
+Tests for the noise-filtering logic added to ingest.py, plus the --dry-run
+and --since CLI flags.
 
-Covers three layers:
-  1. is_noise_project()          — pure predicate, no I/O
-  2. fetch_project_instructions() — COPR HTTP helper, mocked with respx
-  3. Two-phase filter in main()   — integration, all I/O patched
+Covers:
+  1. is_noise_project()             — pure predicate, no I/O
+  2. fetch_project_instructions()   — COPR HTTP helper, mocked with respx
+  3. Two-phase filter in main()     — integration, all I/O patched
+  4. parse_args()/parse_since()     — CLI argument parsing
+  5. package_updated_since()        — --since filter predicate, no I/O
+  6. iter_packages(with_latest_build=...) — COPR query param wiring
+  7. main(dry_run=...)/main(since_ts=...) — integration, all I/O patched
 
 No containers or external services required.
 """
 
-import httpx
-import respx
+import argparse
+from datetime import UTC, datetime
 from unittest.mock import patch
 
+import httpx
+import pytest
+import respx
 from ingest import (
     NOISE_DESCRIPTION_MARKERS,
     NOISE_INSTRUCTIONS_MARKERS,
     fetch_project_details,
     is_noise_project,
+    iter_packages,
     main,
+    package_updated_since,
+    parse_args,
+    parse_since,
 )
 
 COPR_PROJECT_URL = "https://copr.fedorainfracloud.org/api_3/project"
+COPR_PACKAGE_LIST_URL = "https://copr.fedorainfracloud.org/api_3/package/list"
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -261,3 +274,215 @@ def test_mixed_batch_only_legitimate_project_indexed():
         main()
 
     mock_flush.assert_called_once()
+
+
+# ── parse_args / parse_since ──────────────────────────────────────────────────
+
+
+def test_parse_args_defaults_to_no_dry_run_no_since():
+    args = parse_args([])
+    assert args.dry_run is False
+    assert args.since is None
+
+
+def test_parse_args_dry_run_flag():
+    args = parse_args(["--dry-run"])
+    assert args.dry_run is True
+
+
+def test_parse_args_since_flag_parses_to_utc_timestamp():
+    args = parse_args(["--since", "2024-01-01"])
+    assert args.since == datetime(2024, 1, 1, tzinfo=UTC).timestamp()
+
+
+def test_parse_args_since_invalid_date_exits_with_error():
+    with pytest.raises(SystemExit):
+        parse_args(["--since", "not-a-date"])
+
+
+def test_parse_since_valid_date():
+    ts = parse_since("2024-06-15")
+    assert ts == datetime(2024, 6, 15, tzinfo=UTC).timestamp()
+
+
+def test_parse_since_invalid_format_raises():
+    with pytest.raises(argparse.ArgumentTypeError):
+        parse_since("06/15/2024")
+
+
+# ── package_updated_since ─────────────────────────────────────────────────────
+
+
+def test_package_updated_since_true_when_build_on_or_after_cutoff():
+    pkg = {"builds": {"latest": {"submitted_on": 1700000000}}}
+    assert package_updated_since(pkg, 1700000000)
+
+
+def test_package_updated_since_false_when_build_before_cutoff():
+    pkg = {"builds": {"latest": {"submitted_on": 1600000000}}}
+    assert not package_updated_since(pkg, 1700000000)
+
+
+def test_package_updated_since_false_when_no_latest_build():
+    pkg = {"builds": {"latest": None}}
+    assert not package_updated_since(pkg, 1700000000)
+
+
+def test_package_updated_since_false_when_no_builds_key_at_all():
+    pkg = {"name": "somepkg"}
+    assert not package_updated_since(pkg, 1700000000)
+
+
+def test_package_updated_since_false_when_submitted_on_missing():
+    pkg = {"builds": {"latest": {"id": 123}}}
+    assert not package_updated_since(pkg, 1700000000)
+
+
+# ── iter_packages with_latest_build wiring ────────────────────────────────────
+
+
+@respx.mock
+def test_iter_packages_requests_latest_build_when_flagged():
+    respx.get(COPR_PACKAGE_LIST_URL).mock(return_value=httpx.Response(200, json={"items": []}))
+    with httpx.Client() as client:
+        list(iter_packages(client, "owner", "proj", with_latest_build=True))
+    assert respx.calls.last.request.url.params["with_latest_build"] == "true"
+
+
+@respx.mock
+def test_iter_packages_omits_latest_build_by_default():
+    respx.get(COPR_PACKAGE_LIST_URL).mock(return_value=httpx.Response(200, json={"items": []}))
+    with httpx.Client() as client:
+        list(iter_packages(client, "owner", "proj"))
+    assert "with_latest_build" not in respx.calls.last.request.url.params
+
+
+# ── main(dry_run=True) ─────────────────────────────────────────────────────────
+
+
+def test_dry_run_does_not_touch_chromadb(chroma_collection, capsys):
+    """--dry-run must never call collection.get/upsert — flush_batch is the only
+    code path that touches ChromaDB, so this leaves flush_batch unpatched and
+    asserts directly on the mocked collection to prove nothing was written."""
+    with (
+        patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
+        patch(
+            "ingest.fetch_project_details",
+            return_value=("Install with: sudo dnf install mypkg", False),
+        ),
+        patch("ingest.iter_packages", side_effect=lambda *a, **k: iter([SAMPLE_PKG])),
+    ):
+        main(dry_run=True)
+
+    chroma_collection.get.assert_not_called()
+    chroma_collection.upsert.assert_not_called()
+
+    out = capsys.readouterr().out
+    assert "[dry-run]" in out
+    assert "No writes were made to ChromaDB" in out
+
+
+def test_dry_run_reports_no_packages_found(capsys):
+    with (
+        patch("ingest.iter_projects", return_value=iter([EMPTY_DESC_PROJECT])),
+        patch("ingest.fetch_project_details") as mock_fetch,
+        patch("ingest.iter_packages", side_effect=lambda *a, **k: iter([])),
+    ):
+        main(dry_run=True)
+
+    mock_fetch.assert_not_called()
+    out = capsys.readouterr().out
+    assert "[dry-run] No packages found to index" in out
+
+
+# ── main(since_ts=...) ──────────────────────────────────────────────────────────
+
+
+FRESH_PKG = {
+    "name": "fresh-pkg",
+    "summary": "Recently built",
+    "description": "Has a recent build",
+    "builds": {"latest": {"submitted_on": 1_700_000_500}},
+}
+
+STALE_PKG = {
+    "name": "stale-pkg",
+    "summary": "Old build",
+    "description": "Has an old build",
+    "builds": {"latest": {"submitted_on": 1_600_000_000}},
+}
+
+NEVER_BUILT_PKG = {
+    "name": "never-built-pkg",
+    "summary": "No builds yet",
+    "description": "Never built",
+    "builds": {"latest": None},
+}
+
+
+def test_since_filters_out_stale_and_unbuilt_packages():
+    since_ts = 1_700_000_000
+
+    with (
+        patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
+        patch(
+            "ingest.fetch_project_details",
+            return_value=("Install with: sudo dnf install mypkg", False),
+        ),
+        patch(
+            "ingest.iter_packages",
+            side_effect=lambda *a, **k: iter([FRESH_PKG, STALE_PKG, NEVER_BUILT_PKG]),
+        ),
+        patch("ingest.flush_batch") as mock_flush,
+    ):
+        main(since_ts=since_ts)
+
+    mock_flush.assert_called_once()
+    indexed_ids = mock_flush.call_args[0][0]
+    assert indexed_ids == ["real-user/video-tools/fresh-pkg"]
+
+
+def test_since_passes_with_latest_build_flag_to_iter_packages():
+    captured_kwargs = {}
+
+    def fake_iter_packages(client, owner, name, **kwargs):
+        captured_kwargs.update(kwargs)
+        return iter([FRESH_PKG])
+
+    with (
+        patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
+        patch(
+            "ingest.fetch_project_details",
+            return_value=("Install with: sudo dnf install mypkg", False),
+        ),
+        patch("ingest.iter_packages", side_effect=fake_iter_packages),
+        patch("ingest.flush_batch"),
+    ):
+        main(since_ts=1_700_000_000)
+
+    assert captured_kwargs == {"with_latest_build": True}
+
+
+def test_no_since_omits_with_latest_build_kwarg():
+    """Without --since, iter_packages must be called exactly as before (no new
+    kwarg) so a normal crawl doesn't pay for build-detail payload it won't use."""
+    captured_args = []
+
+    def fake_iter_packages(*args, **kwargs):
+        captured_args.append((args, kwargs))
+        return iter([SAMPLE_PKG])
+
+    with (
+        patch("ingest.iter_projects", return_value=iter([LEGITIMATE_PROJECT])),
+        patch(
+            "ingest.fetch_project_details",
+            return_value=("Install with: sudo dnf install mypkg", False),
+        ),
+        patch("ingest.iter_packages", side_effect=fake_iter_packages),
+        patch("ingest.flush_batch"),
+    ):
+        main()
+
+    assert len(captured_args) == 1
+    _, kwargs = captured_args[0]
+    assert kwargs == {}

@@ -73,14 +73,14 @@ ingest:
 	@echo "To refresh entries since a date:   make ingest-since SINCE=2024-01-01"
 	@echo ""
 	@read -p "Continue? [y/N] " ans && [ "$$ans" = "y" ] || exit 1
-	podman exec -it drillbit-test_backend_1 python ingest.py
+	podman exec -it drillbit_backend_1 python ingest.py
 
 ingest-dry:
-	podman exec -it drillbit-test_backend_1 python ingest.py --dry-run
+	podman exec -it drillbit_backend_1 python ingest.py --dry-run
 
 ingest-since:
 	@[ "$(SINCE)" ] || (echo "Usage: make ingest-since SINCE=2024-01-01" && exit 1)
-	podman exec -it drillbit-test_backend_1 python ingest.py --since $(SINCE)
+	podman exec -it drillbit_backend_1 python ingest.py --since $(SINCE)
 
 tests:
 	uv run pytest tests/ -v
