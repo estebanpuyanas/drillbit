@@ -351,7 +351,7 @@ def main(dry_run: bool = False, since_ts: float | None = None):
         score_min, score_max = score_range(scored)
         print(
             f"Done. Scored {total_collected} packages, indexed top {total_pkgs}. "
-            f"Score range: {score_min:.2f}–{score_max:.2f}"
+            f"Score range: {score_min:.2f}-{score_max:.2f}"
         )
     else:
         print("Done. No packages found to index.")
