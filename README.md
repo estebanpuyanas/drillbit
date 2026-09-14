@@ -252,6 +252,8 @@ podman exec -it drillbit_backend_1 python ingest.py
 
 This is a long-running crawl (it pages through all public COPR projects and packages, scores them, and upserts the top 1000 into ChromaDB). Progress is printed to stdout. It is safe to re-run — upsert is idempotent and unchanged packages are skipped.
 
+Use `make ingest-dry` to preview what would be indexed (project/package counts, score range) without writing to ChromaDB, or `make ingest-since SINCE=2024-01-01` to only index packages whose latest COPR build was submitted on or after that date (COPR exposes no project/package "last modified" field, so this is the closest genuine per-package activity signal available).
+
 After ingest completes, the full pipeline (vector search + BM25 + LLM re-ranking) activates, giving results richer summaries and metadata alongside the reason.
 
 ---
